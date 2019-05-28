@@ -50,8 +50,7 @@ class Pug:
         ret = ''
         if self.state == 0:
             ret += f"**\|\| Signing up ({self.player_count}/{self.player_limit}): \|\|** \n"
-            if arg:
-                ret += arg + "\n"
+            ret += arg + "\n"
             ret += f"**Keepers** [{len(self.keeps)}/{self.keep_limit}] \n"
             if self.pug_size == 5:
                 ret += f"**Defenders** [{len(self.defs)}/{self.def_limit}] \n"
