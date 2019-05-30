@@ -1,12 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="1d7c3be2-e104-43c0-9ff6-3c11b26ba246" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/bot.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pug.py" beforeDir="false" afterPath="$PROJECT_DIR$/pug.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/team.py" beforeDir="false" />
-    </list>
+    <list default="true" id="1d7c3be2-e104-43c0-9ff6-3c11b26ba246" name="Default Changelist" comment="" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -160,7 +155,7 @@
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="nodejs_interpreter_path.stuck_in_default_project" value="undefined stuck path" />
     <property name="nodejs_npm_path_reset_for_default_project" value="true" />
-    <property name="settings.editor.selected.configurable" value="terminal" />
+    <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
   </component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
@@ -242,12 +237,12 @@
       <option name="presentableId" value="Default" />
       <updated>1559051523926</updated>
       <workItem from="1559051525102" duration="27625000" />
-      <workItem from="1559134399848" duration="39268000" />
+      <workItem from="1559134399848" duration="39293000" />
     </task>
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="66893000" />
+    <option name="totallyTimeSpent" value="66918000" />
   </component>
   <component name="TodoView">
     <todo-panel id="selected-file">
