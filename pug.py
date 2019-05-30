@@ -60,6 +60,7 @@ class Pug:
         self.mid = []
         self.keep = []
         self.defs = []
+        self.captains = None
         self.pug_size = pug_size
         self.pick_order_str = "Normal"
         self.next_pick = 0
@@ -81,6 +82,12 @@ class Pug:
             return ', '.join(map(str, names)) if len(names) is not 0 else ''
         ret = ''
         if self.state == 0:
+            if self.captains == "d":
+                pug_captains = "Defenders"
+            elif self.captains == "k":
+                pug_captains = "Keepers"
+            else:
+                pug_captains = "Random"
             ret += f"**\|\| Signing up ({self.player_count}/{self.player_limit}): \|\|** \n"
             ret += arg + "\n"
             ret += f"**Keepers** [{len(self.keep)}/{self.keep_limit}] {str(get_names(self.keep))} \n"
@@ -90,6 +97,7 @@ class Pug:
             ret += f"**Midfielders** [{len(self.mid)}/{self.mid_limit}] {str(get_names(self.mid))} \n\n"
             if self.pug_size == 5:
                 ret += f"**Pug Type**: Normal 5v5 \n"
+                ret += f"**Captains**: {pug_captains}\n"
             else:
                 ret += f"**Pug Type**: Normal 3v3 \n"
 
@@ -115,9 +123,9 @@ class Pug:
             ret += f"**Red Team** - Captain {red_team.captain.name} \n {red_team.team_string()} \n\n "
             ret += f"**Pick Order Progress**: {po_string}  \n"
             if self.pick_order[self.next_pick] == 1:
-                ret += f"**BLUE TEAM** ({blue_team.captain.name}), Please pick a player."
+                ret += f"**BLUE TEAM** (<@{blue_team.captain.id}>), Please pick a player."
             elif self.pick_order[self.next_pick] == 2:
-                ret += f"**RED TEAM** ({red_team.captain.name}), Please pick a player."
+                ret += f"**RED TEAM** (<@{red_team.captain.id}>), Please pick a player."
         elif self.state == 2:
             blue_team = args[0]
             red_team = args[1]
@@ -182,3 +190,6 @@ class Pug:
         elif pickorder.lower() == "linear":
             self.pick_order = [1, 2, 1, 2, 1, 2, 1]
             self.pick_order_str = "Linear"
+
+    def set_captains(self, captains):
+        self.captains = captains

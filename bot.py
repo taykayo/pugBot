@@ -2,6 +2,7 @@ import random
 from discord.ext import commands
 from pug import Pug, Team
 import configparser
+from discord import client
 config = configparser.ConfigParser()
 config.read('config.ini')
 TOKEN = config['config']['bot_token']
@@ -307,21 +308,35 @@ async def start_picking(ctx):
     team_list[guild_channel_string + '-blue'] = blue_team
     team_list[guild_channel_string + '-red'] = red_team
 
-
     status_msg = 'Picking has started.'
+    for member in (pug.mid + pug.defs + pug.keep):
+        await member.send('The pug you signed up has started. Teams will be picked very soon.')
+
     if pug.pug_size == 5:
-        if random.randint(0, 1) == 0:
-            if random.randint(0, 1) == 0:  # keeper captains
-                blue_team.add_player("keep", pug.keep[1])
-                red_team.add_player("keep", pug.keep[0])
-                blue_team.captain = pug.keep.pop(1)
-                red_team.captain = pug.keep.pop(0)
-            else:
-                blue_team.add_player("keep", pug.keep[0])
-                red_team.add_player("keep", pug.keep[1])
-                blue_team.captain = pug.keep.pop(0)
-                red_team.captain = pug.keep.pop(0)
-        else:  # defender captains
+        if pug.captains is None:
+            if random.randint(0, 1) == 0:
+                if random.randint(0, 1) == 0:  # keeper captains
+                    blue_team.add_player("keep", pug.keep[1])
+                    red_team.add_player("keep", pug.keep[0])
+                    blue_team.captain = pug.keep.pop(1)
+                    red_team.captain = pug.keep.pop(0)
+                else:
+                    blue_team.add_player("keep", pug.keep[0])
+                    red_team.add_player("keep", pug.keep[1])
+                    blue_team.captain = pug.keep.pop(0)
+                    red_team.captain = pug.keep.pop(0)
+            else:  # defender captains
+                if random.randint(0, 1) == 0:
+                    blue_team.add_player("defs", pug.defs[1])
+                    red_team.add_player("defs", pug.defs[0])
+                    blue_team.captain = pug.defs.pop(1)
+                    red_team.captain = pug.defs.pop(0)
+                else:
+                    blue_team.add_player("defs", pug.defs[0])
+                    red_team.add_player("defs", pug.defs[1])
+                    blue_team.captain = pug.defs.pop(0)
+                    red_team.captain = pug.defs.pop(0)
+        elif pug.captains == "d":
             if random.randint(0, 1) == 0:
                 blue_team.add_player("defs", pug.defs[1])
                 red_team.add_player("defs", pug.defs[0])
@@ -332,6 +347,19 @@ async def start_picking(ctx):
                 red_team.add_player("defs", pug.defs[1])
                 blue_team.captain = pug.defs.pop(0)
                 red_team.captain = pug.defs.pop(0)
+
+        else:
+            if random.randint(0, 1) == 0:  # keeper captains
+                blue_team.add_player("keep", pug.keep[1])
+                red_team.add_player("keep", pug.keep[0])
+                blue_team.captain = pug.keep.pop(1)
+                red_team.captain = pug.keep.pop(0)
+            else:
+                blue_team.add_player("keep", pug.keep[0])
+                red_team.add_player("keep", pug.keep[1])
+                blue_team.captain = pug.keep.pop(0)
+                red_team.captain = pug.keep.pop(0)
+
     else:
         if random.randint(0, 1) == 0:  # keeper captains
             blue_team.add_player("keep", pug.keep[1])
@@ -526,6 +554,7 @@ async def pick(ctx, user):
     else:
         await ctx.send(f"something done borked")
 
+
 @bot.command()
 @commands.has_role(PugAdmin)
 async def spo(ctx, pickorder: str):
@@ -557,15 +586,53 @@ async def spo(ctx, pickorder: str):
     elif pickorder.lower() == "linear":
         pug.spo(pickorder)
     else:
-        pass
+        await ctx.send(pug.pug_status("Invalid pick order. Valid options are 'normal', 'blitz', or 'linear'."))
     await ctx.send(pug.pug_status("Pick Order Changed"))
 
 
-@spo.error
-@aremove.error
-@apick.error
-@aadd.error
-@stop.error
+@bot.command()
+@commands.has_role(PugAdmin)
+async def captains(ctx, captains: str):
+
+    try:
+        guild = ctx.guild.id
+        channel = ctx.channel.name
+        guild_channel_string = str(guild)+'-'+str(channel)
+        pug = pug_list[guild_channel_string]
+
+    except KeyError:
+        await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
+        return
+    if pug.pug_size != 5:
+        await ctx.send(f"<@{ctx.author.id}> Cannot set captains on 3v3 matches.")
+        return
+    try:
+        blue_team = team_list[guild_channel_string + '-blue']
+        red_team = team_list[guild_channel_string + '-red']
+        await ctx.send(f"<@{ctx.author.id}> Cannot change captains once picking is in progress.")
+        return
+    except KeyError:
+        pass
+
+    if captains.lower() == "d":
+        pug.set_captains(captains.lower())
+        await ctx.send(pug.pug_status("Pick Order Changed"))
+    elif captains.lower() == "k":
+        pug.set_captains(captains.lower())
+        await ctx.send(pug.pug_status("Pick Order Changed"))
+    elif captains.lower() == "random":
+        pug.set_captains(None)
+        await ctx.send(pug.pug_status("Pick Order Changed"))
+    else:
+        await ctx.send(f"<@{ctx.author.id}> Invalid captain selection. Valid options are 'd', 'k', or 'random'.")
+
+
+# @captains.error
+# @spo.error
+# @aremove.error
+# @apick.error
+# @aadd.error
+# @stop.error
 async def role_error(ctx, error):
     if isinstance(error,  commands.MissingRole):
         await ctx.send(f"<@{ctx.author.id}> You do not have permission to use this command. ")
