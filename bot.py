@@ -627,12 +627,12 @@ async def captains(ctx, captains: str):
         await ctx.send(f"<@{ctx.author.id}> Invalid captain selection. Valid options are 'd', 'k', or 'random'.")
 
 
-# @captains.error
-# @spo.error
-# @aremove.error
-# @apick.error
-# @aadd.error
-# @stop.error
+@captains.error
+@spo.error
+@aremove.error
+@apick.error
+@aadd.error
+@stop.error
 async def role_error(ctx, error):
     if isinstance(error,  commands.MissingRole):
         await ctx.send(f"<@{ctx.author.id}> You do not have permission to use this command. ")
