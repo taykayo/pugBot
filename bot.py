@@ -84,7 +84,7 @@ async def _stop(ctx):
         return
 
 
-@bot.command(aliases=["list", "players"], help="Shows the current status of the pug; users added to the queue, and during pick phase"
+@bot.command(aliases=["list", "players", "teams"], help="Shows the current status of the pug; users added to the queue, and during pick phase"
                                                           "shows teams, who is picking, and which players are availale.",
              name="status", brief="Shows the current status of the pug")
 async def _status(ctx):

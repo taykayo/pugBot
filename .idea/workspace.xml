@@ -2,7 +2,6 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="1d7c3be2-e104-43c0-9ff6-3c11b26ba246" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/bot.py" beforeDir="false" afterPath="$PROJECT_DIR$/bot.py" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -21,12 +20,11 @@
       <file pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/bot.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="340">
-              <caret line="20" column="22" lean-forward="true" selection-start-line="20" selection-start-column="22" selection-end-line="20" selection-end-column="22" />
+            <state relative-caret-position="85">
+              <caret line="47" column="10" lean-forward="true" selection-start-line="47" selection-start-column="10" selection-end-line="47" selection-end-column="10" />
               <folding>
                 <element signature="e#0#13#0" expanded="true" />
                 <element signature="e#2835#3471#0" />
-                <element signature="e#3532#3740#0" />
                 <element signature="e#3568#4155#0" />
                 <element signature="e#4736#8001#0" />
                 <element signature="e#7718#10392#0" />
@@ -236,12 +234,12 @@
       <workItem from="1559051525102" duration="27625000" />
       <workItem from="1559134399848" duration="40024000" />
       <workItem from="1559236142377" duration="85000" />
-      <workItem from="1559310481522" duration="8755000" />
+      <workItem from="1559310481522" duration="9189000" />
     </task>
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="76489000" />
+    <option name="totallyTimeSpent" value="76923000" />
   </component>
   <component name="TodoView">
     <todo-panel id="selected-file">
@@ -407,12 +405,11 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/bot.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="340">
-          <caret line="20" column="22" lean-forward="true" selection-start-line="20" selection-start-column="22" selection-end-line="20" selection-end-column="22" />
+        <state relative-caret-position="85">
+          <caret line="47" column="10" lean-forward="true" selection-start-line="47" selection-start-column="10" selection-end-line="47" selection-end-column="10" />
           <folding>
             <element signature="e#0#13#0" expanded="true" />
             <element signature="e#2835#3471#0" />
-            <element signature="e#3532#3740#0" />
             <element signature="e#3568#4155#0" />
             <element signature="e#4736#8001#0" />
             <element signature="e#7718#10392#0" />
