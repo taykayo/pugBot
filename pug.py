@@ -35,22 +35,21 @@ class Team:
             pass
 
     def team_string(self):
-        ret = ''
+        ret = ""
         team_string_arr = []
         if len(self.keep) > 0:
             team_string_arr.append("(K) " + str(self.keep[0].name))
         if len(self.defs) > 0:
             team_string_arr.append("(D) " + str(self.defs[0].name))
         mid_string_arr = ["(M) " + str(x.name) for x in self.mid]
-        mid_string = ', '.join(map(str, mid_string_arr)) if len(mid_string_arr) is not 0 else ''
+        mid_string = ", ".join(map(str, mid_string_arr)) if len(mid_string_arr) is not 0 else ""
         team_string_arr.append(mid_string)
-        ret = ', '.join(map(str, team_string_arr)) if len(team_string_arr) is not 0 else ''
+        ret = ", ".join(map(str, team_string_arr)) if len(team_string_arr) is not 0 else ""
 
         return ret
 
 
 class Pug:
-
     def __init__(self, pug_size):
         # Initialize pug data based on game size (3v3/5v5)
         self.player_limit = pug_size * 2
@@ -70,7 +69,8 @@ class Pug:
             self.def_limit = 0
 
         if pug_size == 5:
-            self.pick_order = [1, 2, 2, 1, 2, 1, 2]  # standard for NA, alternate is blitz
+            # standard for NA, alternate is blitz
+            self.pick_order = [1, 2, 2, 1, 2, 1, 2]
             self.mid_limit = 6
             self.def_limit = 2
 
@@ -79,8 +79,9 @@ class Pug:
             names = []
             for user in list:
                 names.append(user.name)
-            return ', '.join(map(str, names)) if len(names) is not 0 else ''
-        ret = ''
+            return ", ".join(map(str, names)) if len(names) is not 0 else ""
+
+        ret = ""
         if self.state == 0:
             if self.captains == "d":
                 pug_captains = "Defenders"
@@ -108,8 +109,8 @@ class Pug:
 
             po_string_arr = ["B" if x == 1 else "R" for x in self.pick_order]
 
-            po_string_arr[self.next_pick] = '[' + po_string_arr[self.next_pick] + ']'
-            po_string = ' - '.join(map(str, po_string_arr)) if len(po_string_arr) is not 0 else ''
+            po_string_arr[self.next_pick] = "[" + po_string_arr[self.next_pick] + "]"
+            po_string = " - ".join(map(str, po_string_arr)) if len(po_string_arr) is not 0 else ""
 
             ret += f"**\|\| Picking Teams: \|\|** \n"
             ret += arg + "\n"
