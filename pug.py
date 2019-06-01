@@ -31,38 +31,33 @@ class Team:
             self.keep.append(user)
         elif position == "defs":
             self.defs.append(user)
-        else:
-            pass
 
     def team_string(self):
-        ret = ""
-        team_string_arr = []
-        if len(self.keep) > 0:
-            team_string_arr.append("(K) " + str(self.keep[0].name))
-        if len(self.defs) > 0:
-            team_string_arr.append("(D) " + str(self.defs[0].name))
-        mid_string_arr = ["(M) " + str(x.name) for x in self.mid]
-        mid_string = ", ".join(map(str, mid_string_arr)) if len(mid_string_arr) is not 0 else ""
-        team_string_arr.append(mid_string)
-        ret = ", ".join(map(str, team_string_arr)) if len(team_string_arr) is not 0 else ""
-
-        return ret
+        team = []
+        if self.keep:
+            team.append(f"(K) {self.keep[0].name}")
+        if self.defs:
+            team.append(f"(D) {self.defs[0].name}")
+        mid_string = ", ".join(f"(M) {x.name}" for x in self.mid)
+        team.append(mid_string)
+        return ", ".join(team)
 
 
 class Pug:
+    player_count = 0
+    keep_limit = 2
+    state = 0  # 0 = Queuing, 1 = Picking, 3 finished
+    mid = []
+    keep = []
+    defs = []
+    captains = None
+    pick_order_str = "Normal"
+    next_pick = 0
+
     def __init__(self, pug_size):
         # Initialize pug data based on game size (3v3/5v5)
-        self.player_limit = pug_size * 2
-        self.player_count = 0
-        self.keep_limit = 2
-        self.state = 0  # 0 = Queuing, 1 = Picking, 3 finished
-        self.mid = []
-        self.keep = []
-        self.defs = []
-        self.captains = None
         self.pug_size = pug_size
-        self.pick_order_str = "Normal"
-        self.next_pick = 0
+        self.player_limit = pug_size * 2
         if pug_size == 3:
             self.pick_order = [1, 2, 2, 1]
             self.mid_limit = 4
@@ -75,11 +70,8 @@ class Pug:
             self.def_limit = 2
 
     def pug_status(self, arg, *args):
-        def get_names(list):
-            names = []
-            for user in list:
-                names.append(user.name)
-            return ", ".join(map(str, names)) if len(names) is not 0 else ""
+        def get_names(users):
+            return ", ".join(user.name for user in users)
 
         ret = ""
         if self.state == 0:
@@ -89,7 +81,7 @@ class Pug:
                 pug_captains = "Keepers"
             else:
                 pug_captains = "Random"
-            ret += f"**\|\| Signing up ({self.player_count}/{self.player_limit}): \|\|** \n"
+            ret += f"**\\|\\| Signing up ({self.player_count}/{self.player_limit}): \\|\\|** \n"
             ret += arg + "\n"
             ret += f"**Keepers** [{len(self.keep)}/{self.keep_limit}] {str(get_names(self.keep))} \n"
             if self.pug_size == 5:
@@ -104,6 +96,7 @@ class Pug:
 
             ret += f"**Pick Order**: {self.pick_order_str} \n"
         elif self.state == 1:
+            # TODO: blue_team and red_team should either be declared as global (if that's the intent) or renamed
             blue_team = args[0]
             red_team = args[1]
 
@@ -112,7 +105,7 @@ class Pug:
             po_string_arr[self.next_pick] = "[" + po_string_arr[self.next_pick] + "]"
             po_string = " - ".join(map(str, po_string_arr)) if len(po_string_arr) is not 0 else ""
 
-            ret += f"**\|\| Picking Teams: \|\|** \n"
+            ret += f"**\\|\\| Picking Teams: \\|\\|** \n"
             ret += arg + "\n"
             if len(self.keep) > 0:
                 ret += f"**Keepers** [{len(self.keep)}] {str(get_names(self.keep))} \n"
@@ -128,9 +121,10 @@ class Pug:
             elif self.pick_order[self.next_pick] == 2:
                 ret += f"**RED TEAM** (<@{red_team.captain.id}>), Please pick a player."
         elif self.state == 2:
+            # TODO: blue_team and red_team should either be declared as global (if that's the intent) or renamed
             blue_team = args[0]
             red_team = args[1]
-            ret += f"**\|\| Match is starting, have fun! \|\|** \n"
+            ret += f"**\\|\\| Match is starting, have fun! \\|\\|** \n"
             ret += f"**Blue Team** - Captain {blue_team.captain.name} \n {blue_team.team_string()} \n\n "
             ret += f"**Red Team** - Captain {red_team.captain.name} \n {red_team.team_string()} \n\n "
         return ret
@@ -142,8 +136,6 @@ class Pug:
             self.keep.append(user)
         elif position == "defs":
             self.defs.append(user)
-        else:
-            pass
         self.player_count = len(self.mid) + len(self.keep) + len(self.defs)
         if self.player_count == self.player_limit:
             self.state = 1
@@ -155,15 +147,10 @@ class Pug:
             self.keep.remove(user)
         elif user in self.defs:
             self.defs.remove(user)
-        else:
-            pass
         self.player_count = len(self.mid) + len(self.keep) + len(self.defs)
 
     def team_pick(self, team, user, *auto):
-        try:
-            if auto[0] is False:
-                pass
-        except:
+        if not auto:
             self.next_pick += 1
 
         if user in self.mid:
@@ -175,20 +162,19 @@ class Pug:
         elif user in self.defs:
             team.add_player("defs", user)
             self.defs.remove(user)
-        else:
-            pass
+
         self.player_count = len(self.mid) + len(self.keep) + len(self.defs)
         if self.player_count == 0:
             self.state = 2
 
-    def spo(self, pickorder):
-        if pickorder.lower() == "blitz":
+    def spo(self, pick_order):
+        if pick_order.lower() == "blitz":
             self.pick_order = [1, 2, 2, 1, 1, 2, 1]
             self.pick_order_str = "Blitz"
-        elif pickorder.lower() == "normal":
+        elif pick_order.lower() == "normal":
             self.pick_order = [1, 2, 2, 1, 2, 1, 2]
             self.pick_order_str = "Normal"
-        elif pickorder.lower() == "linear":
+        elif pick_order.lower() == "linear":
             self.pick_order = [1, 2, 1, 2, 1, 2, 1]
             self.pick_order_str = "Linear"
 
