@@ -2,54 +2,65 @@ import random
 from discord.ext import commands
 from pug import Pug, Team
 import configparser
+
 config = configparser.ConfigParser()
-config.read('config.ini')
-TOKEN = config['config']['bot_token']
-PugAdmin = config['config']['PugbotAdmin']
+config.read("config.ini")
+TOKEN = config["config"]["bot_token"]
+PugAdmin = config["config"]["PugbotAdmin"]
 description = "The NA Supraball PugBot, brought to you by Tiny Turtle"
 
-bot = commands.Bot(command_prefix='!', description=description)
+bot = commands.Bot(command_prefix="!", description=description)
 
-pug_list = {}
-team_list = {}
+pugs = dict()
+teams = dict()
 
 
 @bot.event
 async def on_ready():
-    print('Logged in as')
+    print("Logged in as")
     print(bot.user.name)
     print(bot.user.id)
-    print('------')
+    print("------")
 
 
-@bot.command(name="prefix", help="Used to change the bot command prefix", usage="<prefix>",
-             description="Used to change the bot command prefix", aliases=["Prefix"])
+@bot.command(
+    name="prefix",
+    help="Used to change the bot command prefix",
+    usage="<prefix>",
+    description="Used to change the bot command prefix",
+    aliases=["Prefix"],
+)
 @commands.has_role(PugAdmin)
 async def _prefix(ctx, new_prefix: str):
     bot.command_prefix = new_prefix
     await ctx.send(f"Command Prefix changed to: {bot.command_prefix}")
 
 
-@bot.command(name="start", brief="Starts a channel specific pug queue",
-             help="This command starts a channel specific pug which users can queue for. ""Users will be notified"
-                  " once the pug has reached the required amount of players.  This works with both 3v3 and 5v5 pugs.",
-             usage="<3|5>",
-             description="Instantiates the pug class specific to server-channel, allows users to add to queue. "
-                         " Once queue has reach capacity, pug changes to picking state, instantiate two teams "
-                         "(blue and red). Shuts itself down once teams are picked.",
-             aliases=["START"])
+@bot.command(
+    name="start",
+    brief="Starts a channel specific pug queue",
+    help=(
+        "This command starts a channel specific pug which users can queue for. Users will be notified once the pug has "
+        "reached the required amount of players. This works with both 3v3 and 5v5 pugs."
+    ),
+    usage="<3|5>",
+    description=(
+        "Instantiates the pug class specific to server-channel, allows users to add to queue. "
+        "Once queue has reached capacity, pug changes to picking state, instantiate two teams (blue and red). "
+        "Shuts itself down once teams are picked."
+    ),
+    aliases=["START"],
+)
 async def _start(ctx, pug_size: int):
-    global pug_list
-    guild = ctx.guild.id
-    channel = ctx.channel.name
-    guild_channel_string = str(guild)+'-'+str(channel)
+    global pugs
+    guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
 
-    if guild_channel_string in pug_list.keys():
+    if guild_channel in pugs.keys():
         await ctx.send(f"<@{ctx.author.id}> There is already an ongoing pug in this channel.")
     else:
         if pug_size == 3 or pug_size == 5:
             pug = Pug(pug_size)
-            pug_list[guild_channel_string] = pug
+            pugs[guild_channel] = pug
 
             await ctx.send(f"{pug.pug_status('Pug has started.')}")
 
@@ -57,25 +68,26 @@ async def _start(ctx, pug_size: int):
             await ctx.send(f"Invalid Pug Size")
 
 
-@bot.command(name="stop", aliases=["Stop", "STOP"], help="Used to stop a pug match", description="Unregisters the current pug from the list of"
-                                                                       "running pug matches (stored in a dictionary"
-                                                                       "where the key is 'server-channel', attempts to"
-                                                                       "unregister the teams as well if pug was in"
-                                                                       "picking phase.", pass_context=True)
+@bot.command(
+    name="stop",
+    aliases=["Stop", "STOP"],
+    help="Used to stop a pug match",
+    description=(
+        "Unregisters the current pug from the list of running pug matches (stored in a dictionary where "
+        "the key is 'server-channel', attempts to unregister the teams as well if pug was in picking phase."
+    ),
+    pass_context=True,
+)
 @commands.has_role(PugAdmin)
 async def _stop(ctx):
-    global pug_list, team_list
+    global pugs, teams
     try:
-        guild = ctx.guild.id
-        channel = ctx.channel.name
-        guild_channel_string = str(guild)+'-'+str(channel)
-        pug = pug_list[guild_channel_string]
-        del pug_list[guild_channel_string]
-        del pug
+        guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
+        pug = pugs.pop(guild_channel)
         try:
-            del team_list[guild_channel_string + '-blue']
-            del team_list[guild_channel_string + '-red']
-        except:
+            teams.pop(guild_channel + "-blue")
+            teams.pop(guild_channel + "-red")
+        except KeyError:
             pass
 
         await ctx.send(f"<@{ctx.author.id}> Pug has been stopped. ")
@@ -84,74 +96,83 @@ async def _stop(ctx):
         return
 
 
-@bot.command(aliases=["list", "players", "teams"], help="Shows the current status of the pug; users added to the queue, and during pick phase"
-                                                          "shows teams, who is picking, and which players are availale.",
-             name="status", brief="Shows the current status of the pug")
+@bot.command(
+    aliases=["list", "players", "teams"],
+    help=(
+        "Shows the current status of the pug; users added to the queue, and during pick phase shows teams, "
+        "who is picking, and which players are available."
+    ),
+    name="status",
+    brief="Shows the current status of the pug",
+)
 async def _status(ctx):
     try:
-        guild = ctx.guild.id
-        channel = ctx.channel.name
-        guild_channel_string = str(guild)+'-'+str(channel)
-        pug = pug_list[guild_channel_string]
+        guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
+        pug = pugs[guild_channel]
         if pug.state == 1:
 
-            blue_team = team_list[guild_channel_string + '-blue']
-            red_team = team_list[guild_channel_string + '-red']
-            await ctx.send(pug.pug_status('', blue_team, red_team))
+            blue_team = teams[guild_channel + "-blue"]
+            red_team = teams[guild_channel + "-red"]
+            await ctx.send(pug.pug_status("", blue_team, red_team))
         else:
-            await ctx.send(pug.pug_status(''))
+            await ctx.send(pug.pug_status(""))
     except KeyError:
         await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
 
 
-@bot.command(name="aadd", aliases=["AADD", "aADD", "Aadd"], help="Usable by admins to force add a "
-                                                                                      "user to the pug queue.",
-             usage="<@user> <position>")
+@bot.command(
+    name="aadd",
+    aliases=["AADD", "aADD", "Aadd"],
+    help="Usable by admins to force add a user to the pug queue.",
+    usage="<@user> <position>",
+)
 @commands.has_role(PugAdmin)
 async def _aadd(ctx, *args):
     try:
-        guild = ctx.guild
-        channel = ctx.channel.name
-        guild_channel_string = str(ctx.guild.id)+'-'+str(channel)
-        pug = pug_list[guild_channel_string]
+        guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
+        pug = pugs[guild_channel]
         position = args[-1]
-        user_string = args[:-1]
-        user = ' '.join(user_string)
-        user_id = ''.join(filter(lambda x: x.isdigit(), user))  # filters out non-digits
+        user = " ".join(args[:-1])
+        user_id = "".join(x for x in user if x.isdigit())  # filters out non-digits
         disc_user = ctx.guild.get_member(int(user_id))
     except KeyError:
         await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
         return
     except ValueError:
         try:
-            disc_user = guild.get_member_named(user)
+            disc_user = ctx.guild.get_member_named(user)
             if disc_user is None:
-                raise Exception('Could not find user')
+                # raise a specific error if needed, not just Exception.
+                # sometimes you'll want to create your own error but raising built-ins is fine when they fit
+                raise KeyError("Could not find user")
+        # TODO: this logic could be better, figure out what exceptions you what to catch
         except:
-            await ctx.send(f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure"
-                           f" to type the name out exactly as it appears in their username.")
+            await ctx.send(
+                f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
+                "the name out exactly as it appears in their username."
+            )
             return
 
     if pug.state == 1:
         await ctx.send(f"<@{ctx.author.id}> Cannot add or remove during pick phase!")
         return
-
-    status_msg = ''
-    if position in ["m", "M", "mid", "MID", "Mid"]:
+    # TODO: lots of repeat code here, should be pretty easy to factor out into a function
+    if position in ("m", "M", "mid", "MID", "Mid"):
         if disc_user in pug.mid:
-            await ctx.send(f"<@{ctx.author.id}> {str(disc_user.name)} is already added to this position.")
+            await ctx.send(f"<@{ctx.author.id}> {disc_user.name} is already added to this position.")
         else:
+            # TODO: do you really want to remove a player before knowing if the position is full? (same for k and d)
             if (disc_user in pug.defs) or (disc_user in pug.keep):
                 pug.remove_player(disc_user)
             if len(pug.mid) >= pug.mid_limit:
                 await ctx.send(f"<@{ctx.author.id}> This position is full.")
             else:
                 pug.add_player(disc_user, "mid")
-                status_msg = f"{str(disc_user.name)} has been signed up as a midfielder."
+                status_msg = f"{disc_user.name} has been signed up as a midfielder."
                 if pug.state == 0:
                     await ctx.send(pug.pug_status(status_msg))
 
-    elif position in ["k", "K", "keep", "Keep", "KEEP"]:
+    elif position in ("k", "K", "keep", "Keep", "KEEP"):
         if disc_user in pug.keep:
             await ctx.send(f"<@{ctx.author.id}> {str(disc_user.name)} is already added to this position.")
         else:
@@ -161,11 +182,11 @@ async def _aadd(ctx, *args):
                 await ctx.send(f"<@{ctx.author.id}> This position is full.")
             else:
                 pug.add_player(disc_user, "keep")
-                status_msg = f"{str(disc_user.name)} has been signed up as a keeper."
+                status_msg = f"{disc_user.name} has been signed up as a keeper."
                 if pug.state == 0:
                     await ctx.send(pug.pug_status(status_msg))
 
-    elif position in ["d", "D", "def", "Def", "Defender", "defender", "DEFENDER"]:
+    elif position in ("d", "D", "def", "Def", "Defender", "defender", "DEFENDER"):
         if disc_user in pug.defs:
             await ctx.send(f"<@{ctx.author.id}> {str(disc_user.name)} is already added to this position.")
         else:
@@ -185,13 +206,17 @@ async def _aadd(ctx, *args):
         await start_picking(ctx)
 
 
-@bot.command(name="add", aliases=["a", "ADD", "A"], brief="Used to register oneself for a pug match", usage="<m|k|d>", help="Used to register oneself for a pug match")
+@bot.command(
+    name="add",
+    aliases=["a", "ADD", "A"],
+    brief="Used to register oneself for a pug match",
+    usage="<m|k|d>",
+    help="Used to register oneself for a pug match",
+)
 async def _add(ctx, position: str):
     try:
-        guild = ctx.guild.id
-        channel = ctx.channel.name
-        guild_channel_string = str(guild)+'-'+str(channel)
-        pug = pug_list[guild_channel_string]
+        guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
+        pug = pugs[guild_channel]
     except KeyError:
         await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
         return
@@ -199,10 +224,10 @@ async def _add(ctx, position: str):
         await ctx.send(f"<@{ctx.author.id}> Cannot add or remove during pick phase!")
         return
     disc_user = ctx.author
-    status_msg = ''
+    # TODO: again, very similar to the above logic
     if position.lower() in ["mid", "m"]:
         if disc_user in pug.mid:
-            await ctx.send(f"<@{ctx.author.id}> {str(disc_user.name)} is already added to this position.")
+            await ctx.send(f"<@{ctx.author.id}> {disc_user.name} is already added to this position.")
         else:
             if (disc_user in pug.defs) or (disc_user in pug.keep):
                 pug.remove_player(disc_user)
@@ -244,34 +269,39 @@ async def _add(ctx, position: str):
 
     else:
         await ctx.send(f"<@{ctx.author.id}> Invalid position.")
-    if pug.state ==1:
+    if pug.state == 1:
         await start_picking(ctx)
 
 
-@bot.command(name="aremove", aliases=["AREMOVE", "Aremove"], brief="Usable by admins to force remove a user from the pug",
-             help="Usable by admins to force remove a user from the pug", usage="<@user>")
+@bot.command(
+    name="aremove",
+    aliases=["AREMOVE", "Aremove"],
+    brief="Usable by admins to force remove a user from the pug",
+    help="Usable by admins to force remove a user from the pug",
+    usage="<@user>",
+)
 @commands.has_role(PugAdmin)
 async def _aremove(ctx, *args):
     try:
-        guild = ctx.guild
-        channel = ctx.channel.name
-        guild_channel_string = str(ctx.guild.id)+'-'+str(channel)
-        pug = pug_list[guild_channel_string]
-        user = ' '.join(args)
+        guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
+        pug = pugs[guild_channel]
+        user = " ".join(args)
         print(user)
-        user_id = ''.join(filter(lambda x: x.isdigit(), user))  # filters out non-digits
+        user_id = "".join(x for x in user if x.isdigit())  # filters out non-digits
         disc_user = ctx.guild.get_member(int(user_id))
     except KeyError:
         await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
         return
     except ValueError:
         try:
-            disc_user = guild.get_member_named(user)
+            disc_user = ctx.guild.get_member_named(user)
             if disc_user is None:
-                raise Exception('Could not find user')
+                raise KeyError("Could not find user")
         except:
-            await ctx.send(f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure"
-                           f" to type the name out exactly as it appears in their username.")
+            await ctx.send(
+                f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
+                "the name out exactly as it appears in their username."
+            )
             return
     if pug.state == 1:
         await ctx.send(f"<@{ctx.author.id}> Cannot add or remove during pick phase!")
@@ -292,13 +322,18 @@ async def _aremove(ctx, *args):
     await ctx.send(pug.pug_status(status_msg))
 
 
-@bot.command(name="remove", aliases=["r", "R", "Remove", "REMOVE"], brief="Used to remove oneself from a pug match", help="Used to remove onself from a pug match")
+@bot.command(
+    name="remove",
+    aliases=["r", "R", "Remove", "REMOVE"],
+    brief="Used to remove oneself from a pug match",
+    help="Used to remove oneself from a pug match",
+)
 async def _remove(ctx):
     try:
         guild = ctx.guild.id
         channel = ctx.channel.name
-        guild_channel_string = str(guild)+'-'+str(channel)
-        pug = pug_list[guild_channel_string]
+        guild_channel_string = str(guild) + "-" + str(channel)
+        pug = pugs[guild_channel_string]
     except KeyError:
         await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
         return
@@ -325,17 +360,17 @@ async def _remove(ctx):
 async def start_picking(ctx):
     guild = ctx.guild.id
     channel = ctx.channel.name
-    guild_channel_string = str(guild) + '-' + str(channel)
-    pug = pug_list[guild_channel_string]
+    guild_channel_string = str(guild) + "-" + str(channel)
+    pug = pugs[guild_channel_string]
 
     blue_team = Team(pug.pug_size, "Blue")
     red_team = Team(pug.pug_size, "Red")
-    team_list[guild_channel_string + '-blue'] = blue_team
-    team_list[guild_channel_string + '-red'] = red_team
+    teams[guild_channel_string + "-blue"] = blue_team
+    teams[guild_channel_string + "-red"] = red_team
 
-    status_msg = 'Picking has started.'
-    for member in (pug.mid + pug.defs + pug.keep):
-        await member.send('The pug you signed up has started. Teams will be picked very soon.')
+    status_msg = "Picking has started."
+    for member in pug.mid + pug.defs + pug.keep:
+        await member.send("The pug you signed up has started. Teams will be picked very soon.")
 
     if pug.pug_size == 5:
         if pug.captains is None:
@@ -400,22 +435,26 @@ async def start_picking(ctx):
     await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
 
 
-
-@bot.command(name="apick", aliases=["APICK", "Apick"], brief="Usable by admins to force pick a player for the choosing team",
-             help="Usable by admins to force pick a player to join whichever team is currently picking", usage="<@user>")
+@bot.command(
+    name="apick",
+    aliases=["APICK", "Apick"],
+    brief="Usable by admins to force pick a player for the choosing team",
+    help="Usable by admins to force pick a player to join whichever team is currently picking",
+    usage="<@user>",
+)
 @commands.has_role(PugAdmin)
 async def _apick(ctx, *args):
-    global pug_list, team_list
+    global pugs, teams
     try:
         guild = ctx.guild
         channel = ctx.channel.name
-        guild_channel_string = str(ctx.guild.id)+'-'+str(channel)
-        pug = pug_list[guild_channel_string]
-        blue_team = team_list[guild_channel_string + '-blue']
-        red_team = team_list[guild_channel_string + '-red']
-        user = ' '.join(args)
+        guild_channel_string = str(ctx.guild.id) + "-" + str(channel)
+        pug = pugs[guild_channel_string]
+        blue_team = teams[guild_channel_string + "-blue"]
+        red_team = teams[guild_channel_string + "-red"]
+        user = " ".join(args)
         print(user)
-        user_id = ''.join(filter(lambda x: x.isdigit(), user))  # filters out non-digits
+        user_id = "".join(filter(lambda x: x.isdigit(), user))  # filters out non-digits
         disc_user = ctx.guild.get_member(int(user_id))
 
     except KeyError:
@@ -425,92 +464,101 @@ async def _apick(ctx, *args):
         try:
             disc_user = guild.get_member_named(user)
             if disc_user is None:
-                raise Exception('Could not find user')
+                raise Exception("Could not find user")
         except:
-            await ctx.send(f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure"
-                           f" to type the name out exactly as it appears in their username.")
+            await ctx.send(
+                f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
+                "the name out exactly as it appears in their username."
+            )
             return
     if pug.state == 0:
         await ctx.send(f"<@{ctx.author.id}> Pug not in pick phase.")
         return
     if pug.pick_order[pug.next_pick] == 1:
 
-            if (disc_user in pug.mid) or (disc_user in pug.keep) or ( disc_user in pug.defs):
-                status_msg = f"{str(disc_user.name)} has been picked by **BLUE TEAM**"
-                pug.team_pick(blue_team, disc_user)
+        if (disc_user in pug.mid) or (disc_user in pug.keep) or (disc_user in pug.defs):
+            status_msg = f"{str(disc_user.name)} has been picked by **BLUE TEAM**"
+            pug.team_pick(blue_team, disc_user)
 
-                if (len(blue_team.defs) == blue_team.defs_limit) and (len(pug.defs) > 0):
-                    status_msg += f"\n{str(pug.defs[0].name)} has been auto-assigned to **RED TEAM**"
-                    pug.team_pick(red_team, pug.defs[0], False)
-                    del pug.pick_order[-1]
-                if (len(blue_team.keep) == blue_team.keep_limit) and (len(pug.keep) > 0):
-                    status_msg += f"\n{str(pug.keep[0].name)} has been auto-assigned to **RED TEAM**"
-                    pug.team_pick(red_team, pug.keep[0], False)
-                    del pug.pick_order[-1]
-                while len(blue_team.mid) == blue_team.mid_limit and (len(pug.mid) > 0):
-                    status_msg += f"\n{str(pug.mid[0].name)} has been auto-assigned to **RED TEAM**"
-                    pug.team_pick(red_team, pug.mid[0], False)
-                    del pug.pick_order[-1]
-                await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
-                if pug.state == 2:
-                    del pug_list[guild_channel_string]
-                    del pug
-                    try:
-                        del team_list[guild_channel_string + '-blue']
-                        del team_list[guild_channel_string + '-red']
-                    except:
-                        pass
+            if (len(blue_team.defs) == blue_team.defs_limit) and (len(pug.defs) > 0):
+                status_msg += f"\n{str(pug.defs[0].name)} has been auto-assigned to **RED TEAM**"
+                pug.team_pick(red_team, pug.defs[0], False)
+                del pug.pick_order[-1]
+            if (len(blue_team.keep) == blue_team.keep_limit) and (len(pug.keep) > 0):
+                status_msg += f"\n{str(pug.keep[0].name)} has been auto-assigned to **RED TEAM**"
+                pug.team_pick(red_team, pug.keep[0], False)
+                del pug.pick_order[-1]
+            while len(blue_team.mid) == blue_team.mid_limit and (len(pug.mid) > 0):
+                status_msg += f"\n{str(pug.mid[0].name)} has been auto-assigned to **RED TEAM**"
+                pug.team_pick(red_team, pug.mid[0], False)
+                del pug.pick_order[-1]
+            await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
+            if pug.state == 2:
+                del pugs[guild_channel_string]
+                del pug
+                try:
+                    del teams[guild_channel_string + "-blue"]
+                    del teams[guild_channel_string + "-red"]
+                except:
+                    pass
 
-            else:
-                await ctx.send(f"<@{ctx.author.id}> {str(disc_user.name)} is not a valid choice. Please pick a valid player.")
+        else:
+            await ctx.send(
+                f"<@{ctx.author.id}> {str(disc_user.name)} is not a valid choice. Please pick a valid player."
+            )
 
     elif pug.pick_order[pug.next_pick] == 2:
-            if (disc_user in pug.mid) or (disc_user in pug.keep) or (disc_user in pug.defs):
-                status_msg = f"{str(disc_user.name)} has been picked by **RED TEAM**"
-                pug.team_pick(red_team, disc_user)
+        if (disc_user in pug.mid) or (disc_user in pug.keep) or (disc_user in pug.defs):
+            status_msg = f"{str(disc_user.name)} has been picked by **RED TEAM**"
+            pug.team_pick(red_team, disc_user)
 
-                if (len(red_team.defs) == red_team.defs_limit) and (len(pug.defs) > 0):
-                    status_msg += f"\n{str(pug.defs[0].name)} has been auto-assigned to **BLUE TEAM**"
-                    pug.team_pick(blue_team, pug.defs[0], False)
-                    del pug.pick_order[-1]
-                if (len(red_team.keep) == red_team.keep_limit) and (len(pug.keep) > 0):
-                    status_msg += f"\n{str(pug.keep[0].name)} has been auto-assigned to **BLUE TEAM**"
-                    pug.team_pick(blue_team, pug.keep[0], False)
-                    del pug.pick_order[-1]
-                while (len(red_team.mid) == red_team.mid_limit) and (len(pug.mid) > 0):
-                    status_msg += f"\n{str(pug.mid[0].name)} has been auto-assigned to **BLUE TEAM**"
-                    pug.team_pick(blue_team, pug.mid[0], False)
-                    del pug.pick_order[-1]
-                await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
-                if pug.state == 2:
-                    del pug_list[guild_channel_string]
-                    del pug
-                    try:
-                        del team_list[guild_channel_string + '-blue']
-                        del team_list[guild_channel_string + '-red']
-                    except:
-                        pass
+            if (len(red_team.defs) == red_team.defs_limit) and (len(pug.defs) > 0):
+                status_msg += f"\n{str(pug.defs[0].name)} has been auto-assigned to **BLUE TEAM**"
+                pug.team_pick(blue_team, pug.defs[0], False)
+                del pug.pick_order[-1]
+            if (len(red_team.keep) == red_team.keep_limit) and (len(pug.keep) > 0):
+                status_msg += f"\n{str(pug.keep[0].name)} has been auto-assigned to **BLUE TEAM**"
+                pug.team_pick(blue_team, pug.keep[0], False)
+                del pug.pick_order[-1]
+            while (len(red_team.mid) == red_team.mid_limit) and (len(pug.mid) > 0):
+                status_msg += f"\n{str(pug.mid[0].name)} has been auto-assigned to **BLUE TEAM**"
+                pug.team_pick(blue_team, pug.mid[0], False)
+                del pug.pick_order[-1]
+            await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
+            if pug.state == 2:
+                del pugs[guild_channel_string]
+                del pug
+                try:
+                    del teams[guild_channel_string + "-blue"]
+                    del teams[guild_channel_string + "-red"]
+                except:
+                    pass
 
-            else:
-                status_msg = f"{str(disc_user.name)} is not in the pug.**"
-                await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
+        else:
+            status_msg = f"{str(disc_user.name)} is not in the pug.**"
+            await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
     else:
         await ctx.send(f"something done borked")
 
 
-@bot.command(name="pick", aliases=["PICK", "p", "P", "Pick"], brief="Used by captains to choose a player during their pick turn",
-             help="Adds specified player to your team.  Only useable by the team captain on their pick turn", usage="<@user>")
+@bot.command(
+    name="pick",
+    aliases=["PICK", "p", "P", "Pick"],
+    brief="Used by captains to choose a player during their pick turn",
+    help="Adds specified player to your team.  Only useable by the team captain on their pick turn",
+    usage="<@user>",
+)
 async def _pick(ctx, *args):
-    global pug_list, team_list
+    global pugs, teams
     try:
         guild = ctx.guild
         channel = ctx.channel.name
-        guild_channel_string = str(ctx.guild.id) + '-' + str(channel)
-        pug = pug_list[guild_channel_string]
-        blue_team = team_list[guild_channel_string + '-blue']
-        red_team = team_list[guild_channel_string + '-red']
-        user = ' '.join(args)
-        user_id = ''.join(filter(lambda x: x.isdigit(), user))  # filters out non-digits
+        guild_channel_string = str(ctx.guild.id) + "-" + str(channel)
+        pug = pugs[guild_channel_string]
+        blue_team = teams[guild_channel_string + "-blue"]
+        red_team = teams[guild_channel_string + "-red"]
+        user = " ".join(args)
+        user_id = "".join(filter(lambda x: x.isdigit(), user))  # filters out non-digits
         disc_user = ctx.guild.get_member(int(user_id))
 
     except KeyError:
@@ -520,10 +568,12 @@ async def _pick(ctx, *args):
         try:
             disc_user = guild.get_member_named(user)
             if disc_user is None:
-                raise Exception('Could not find user')
+                raise Exception("Could not find user")
         except:
-            await ctx.send(f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure"
-                           f" to type the name out exactly as it appears in their username.")
+            await ctx.send(
+                f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
+                "the name out exactly as it appears in their username."
+            )
             return
 
     if pug.state == 0:
@@ -532,11 +582,11 @@ async def _pick(ctx, *args):
     if pug.pick_order[pug.next_pick] == 1:
 
         if ctx.author == blue_team.captain:
-            if (disc_user in pug.mid) or (disc_user in pug.keep) or ( disc_user in pug.defs):
+            if (disc_user in pug.mid) or (disc_user in pug.keep) or (disc_user in pug.defs):
                 status_msg = f"{str(disc_user.name)} has been picked by **BLUE TEAM**"
                 pug.team_pick(blue_team, disc_user)
 
-                if (len(blue_team.defs) == blue_team.defs_limit) and (len(pug.defs) > 0):
+                if len(blue_team.defs) == blue_team.defs_limit and len(pug.defs) > 0:
                     status_msg += f"\n{str(pug.defs[0].name)} has been auto-assigned to **RED TEAM**"
                     pug.team_pick(red_team, pug.defs[0], False)
                     del pug.pick_order[-1]
@@ -550,17 +600,18 @@ async def _pick(ctx, *args):
                     del pug.pick_order[-1]
                 await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
                 if pug.state == 2:
-                    del pug_list[guild_channel_string]
+                    del pugs[guild_channel_string]
                     del pug
                     try:
-                        del team_list[guild_channel_string + '-blue']
-                        del team_list[guild_channel_string + '-red']
+                        del teams[guild_channel_string + "-blue"]
+                        del teams[guild_channel_string + "-red"]
                     except:
                         pass
 
             else:
-                await ctx.send(f"<@{ctx.author.id}> {str(disc_user.name)} is not a valid choice. Please pick a valid player.")
-
+                await ctx.send(
+                    f"<@{ctx.author.id}> {str(disc_user.name)} is not a valid choice. Please pick a valid player."
+                )
 
         else:
             await ctx.send(f"<@{ctx.author.id}> Look at me! {blue_team.captain.name} is the captain now!")
@@ -585,11 +636,11 @@ async def _pick(ctx, *args):
                     del pug.pick_order[-1]
                 await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
                 if pug.state == 2:
-                    del pug_list[guild_channel_string]
+                    del pugs[guild_channel_string]
                     del pug
                     try:
-                        del team_list[guild_channel_string + '-blue']
-                        del team_list[guild_channel_string + '-red']
+                        del teams[guild_channel_string + "-blue"]
+                        del teams[guild_channel_string + "-red"]
                     except:
                         pass
 
@@ -603,31 +654,35 @@ async def _pick(ctx, *args):
         await ctx.send(f"something done borked")
 
 
-@bot.command(name="spo", aliases=["SPO", "Spo"], brief="Usable by admins to change the pug team pick order",
-             help="Changes the pick order to specified setting.  Not available for 3v3 pugs. Supports NA Normal: [B, R, R, B, R, B, R], Blitz: [B, R, R, B, B, R, B],"
-                  "and Linear: [B, R, B, R, B, R, B]", usage="<Blitz|Linear|Normal>")
+@bot.command(
+    name="spo",
+    aliases=["SPO", "Spo"],
+    brief="Usable by admins to change the pug team pick order",
+    help=(
+        "Changes the pick order to specified setting.  Not available for 3v3 pugs. "
+        "Supports NA Normal: [B, R, R, B, R, B, R], Blitz: [B, R, R, B, B, R, B], and Linear: [B, R, B, R, B, R, B]"
+    ),
+    usage="<Blitz|Linear|Normal>",
+)
 @commands.has_role(PugAdmin)
 async def _spo(ctx, pickorder: str):
 
     try:
         guild = ctx.guild.id
         channel = ctx.channel.name
-        guild_channel_string = str(guild)+'-'+str(channel)
-        pug = pug_list[guild_channel_string]
-
+        guild_channel = str(guild) + "-" + str(channel)
+        pug = pugs[guild_channel]
     except KeyError:
         await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
         return
+
     if pug.pug_size != 5:
         await ctx.send(f"<@{ctx.author.id}> Cannot change pick order on 3v3 matches.")
         return
-    try:
-        blue_team = team_list[guild_channel_string + '-blue']
-        red_team = team_list[guild_channel_string + '-red']
+
+    if f"{guild_channel}-blue" in teams or f"{guild_channel}-red" in teams:
         await ctx.send(f"<@{ctx.author.id}> Cannot change pick order once picking is in progress")
         return
-    except KeyError:
-        pass
 
     if pickorder.lower() == "blitz":
         pug.spo(pickorder)
@@ -640,16 +695,21 @@ async def _spo(ctx, pickorder: str):
     await ctx.send(pug.pug_status("Pick Order Changed"))
 
 
-@bot.command(name="captains", aliases=["Captains", "CAPTAINS", "c", "C", "captain"], brief="Usable by admins to manually select which position will be captains.",
-             help="Selects which position will be used for captains.  Not usable in 3v3", usage="<k|d|random>")
+@bot.command(
+    name="captains",
+    aliases=["Captains", "CAPTAINS", "c", "C", "captain"],
+    brief="Usable by admins to manually select which position will be captains.",
+    help="Selects which position will be used for captains.  Not usable in 3v3",
+    usage="<k|d|random>",
+)
 @commands.has_role(PugAdmin)
 async def _captains(ctx, captains: str):
 
     try:
         guild = ctx.guild.id
         channel = ctx.channel.name
-        guild_channel_string = str(guild)+'-'+str(channel)
-        pug = pug_list[guild_channel_string]
+        guild_channel_string = str(guild) + "-" + str(channel)
+        pug = pugs[guild_channel_string]
 
     except KeyError:
         await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
@@ -658,8 +718,9 @@ async def _captains(ctx, captains: str):
         await ctx.send(f"<@{ctx.author.id}> Cannot set captains on 3v3 matches.")
         return
     try:
-        blue_team = team_list[guild_channel_string + '-blue']
-        red_team = team_list[guild_channel_string + '-red']
+        # TODO: just use an if statement here (see changes to _spo above)
+        blue_team = teams[guild_channel_string + "-blue"]
+        red_team = teams[guild_channel_string + "-red"]
         await ctx.send(f"<@{ctx.author.id}> Cannot change captains once picking is in progress.")
         return
     except KeyError:
@@ -685,6 +746,8 @@ async def _captains(ctx, captains: str):
 @_aadd.error
 @_stop.error
 async def role_error(ctx, error):
-    if isinstance(error,  commands.MissingRole):
+    if isinstance(error, commands.MissingRole):
         await ctx.send(f"<@{ctx.author.id}> You do not have permission to use this command. ")
+
+
 bot.run(TOKEN)
