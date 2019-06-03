@@ -16,6 +16,30 @@ teams = dict()
 
 
 async def start_picking(ctx):
+    def pick_captains():
+        if pug.pug_size == 5:
+            if pug.captains is None:
+                if random.randint(0, 1) == 0:
+                    position = pug.keep
+                    position_string = "keep"
+                else:
+                    position = pug.defs
+                    position_string = "defs"
+            elif pug.captains == "d":
+                position = pug.defs
+                position_string = "defs"
+            else:
+                position = pug.keep
+                position_string = "keep"
+        else:
+            position = pug.keep
+            position_string = "keep"
+        weight = random.randint(0, 1)
+        blue_team.add_player(position_string, position[1-weight])
+        red_team.add_player(position_string, position[weight])
+        blue_team.captain = position.pop(1-weight)
+        red_team.captain = position.pop(0)
+
     guild = ctx.guild.id
     channel = ctx.channel.name
     guild_channel_string = str(guild) + "-" + str(channel)
@@ -31,66 +55,7 @@ async def start_picking(ctx):
         for member in pug.mid + pug.defs + pug.keep:
             await member.send("The pug you signed up has started. Teams will be picked very soon.")
 
-    if pug.pug_size == 5:
-        if pug.captains is None:
-            if random.randint(0, 1) == 0:
-                if random.randint(0, 1) == 0:  # keeper captains
-                    blue_team.add_player("keep", pug.keep[1])
-                    red_team.add_player("keep", pug.keep[0])
-                    blue_team.captain = pug.keep.pop(1)
-                    red_team.captain = pug.keep.pop(0)
-                else:
-                    blue_team.add_player("keep", pug.keep[0])
-                    red_team.add_player("keep", pug.keep[1])
-                    blue_team.captain = pug.keep.pop(0)
-                    red_team.captain = pug.keep.pop(0)
-            else:  # defender captains
-                if random.randint(0, 1) == 0:
-                    blue_team.add_player("defs", pug.defs[1])
-                    red_team.add_player("defs", pug.defs[0])
-                    blue_team.captain = pug.defs.pop(1)
-                    red_team.captain = pug.defs.pop(0)
-                else:
-                    blue_team.add_player("defs", pug.defs[0])
-                    red_team.add_player("defs", pug.defs[1])
-                    blue_team.captain = pug.defs.pop(0)
-                    red_team.captain = pug.defs.pop(0)
-        elif pug.captains == "d":
-            if random.randint(0, 1) == 0:
-                blue_team.add_player("defs", pug.defs[1])
-                red_team.add_player("defs", pug.defs[0])
-                blue_team.captain = pug.defs.pop(1)
-                red_team.captain = pug.defs.pop(0)
-            else:
-                blue_team.add_player("defs", pug.defs[0])
-                red_team.add_player("defs", pug.defs[1])
-                blue_team.captain = pug.defs.pop(0)
-                red_team.captain = pug.defs.pop(0)
-
-        else:
-            if random.randint(0, 1) == 0:  # keeper captains
-                blue_team.add_player("keep", pug.keep[1])
-                red_team.add_player("keep", pug.keep[0])
-                blue_team.captain = pug.keep.pop(1)
-                red_team.captain = pug.keep.pop(0)
-            else:
-                blue_team.add_player("keep", pug.keep[0])
-                red_team.add_player("keep", pug.keep[1])
-                blue_team.captain = pug.keep.pop(0)
-                red_team.captain = pug.keep.pop(0)
-
-    else:
-        if random.randint(0, 1) == 0:  # keeper captains
-            blue_team.add_player("keep", pug.keep[1])
-            red_team.add_player("keep", pug.keep[0])
-            blue_team.captain = pug.keep.pop(1)
-            red_team.captain = pug.keep.pop(0)
-        else:
-            blue_team.add_player("keep", pug.keep[0])
-            red_team.add_player("keep", pug.keep[1])
-            blue_team.captain = pug.keep.pop(0)
-            red_team.captain = pug.keep.pop(0)
-
+    pick_captains()
     await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
 
 
@@ -151,6 +116,83 @@ async def attempt_remove(ctx, pug, disc_user):
         await ctx.send(f"<@{ctx.author.id}> {str(disc_user.name)} is not signed up for this pug.")
         return
     await ctx.send(pug.pug_status(status_msg))
+
+
+async def attempt_pick(ctx, pug, disc_user):
+    blue_team, red_team, = [x for x in get_teams(ctx)]
+    if pug.state == 0:
+        await ctx.send(f"<@{ctx.author.id}> Pug not in pick phase.")
+        return
+    if pug.pick_order[pug.next_pick] == 1:
+        team = blue_team
+        opp_team = red_team
+        team_string = "BLUE TEAM"
+        opp_string = "RED TEAM"
+    elif pug.pick_order[pug.next_pick] == 2:
+        team = red_team
+        opp_team = blue_team
+        team_string = "RED TEAM"
+        opp_string = "BLUE TEAM"
+
+    else:
+        await ctx.send(f"something done borked, call mr turtle")
+        return
+
+    if any(disc_user in x for x in [pug.mid, pug.keep, pug.defs]):
+        status_msg = f"{str(disc_user.name)} has been picked by **{team_string}**"
+        pug.team_pick(team, disc_user)
+
+        if (len(team.defs) == team.defs_limit) and (len(pug.defs) > 0):
+            status_msg += f"\n{str(pug.defs[0].name)} has been auto-assigned to **{opp_string}**"
+            pug.team_pick(opp_team, pug.defs[0], False)
+            del pug.pick_order[-1]
+        if (len(team.keep) == team.keep_limit) and (len(pug.keep) > 0):
+            status_msg += f"\n{str(pug.keep[0].name)} has been auto-assigned to **{opp_string}**"
+            pug.team_pick(opp_team, pug.keep[0], False)
+            del pug.pick_order[-1]
+        while len(team.mid) == team.mid_limit and (len(pug.mid) > 0):
+            status_msg += f"\n{str(pug.mid[0].name)} has been auto-assigned to **{opp_string}**"
+            pug.team_pick(opp_team, pug.mid[0], False)
+            del pug.pick_order[-1]
+        await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
+        if pug.state == 2:
+            destroy_pug(ctx)
+            try:
+                destroy_teams(ctx)
+            except:
+                pass
+
+    else:
+        await ctx.send(
+            f"<@{ctx.author.id}> {str(disc_user.name)} is not a valid choice. Please pick a valid player."
+        )
+
+
+def get_pug(ctx):
+    guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
+    pug = pugs[guild_channel]
+    return pug
+
+
+def get_teams(ctx):
+    guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
+    blue_team = teams[guild_channel + "-blue"]
+    red_team = teams[guild_channel + "-red"]
+
+    return [blue_team, red_team]
+
+
+def destroy_pug(ctx):
+    guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
+    pug = pugs[guild_channel]
+    del pugs[guild_channel]
+    del pug
+
+
+def destroy_teams(ctx):
+    guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
+    del teams[guild_channel + "-blue"]
+    del teams[guild_channel + "-red"]
 
 
 @bot.event
@@ -220,13 +262,9 @@ async def _start(ctx, pug_size: int):
 async def _stop(ctx):
     global pugs, teams
     try:
-        guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
-        pug = pugs[guild_channel]
-        del pugs[guild_channel]
-        del pug
+        destroy_pug(ctx)
         try:
-            del teams[guild_channel + "-blue"]
-            del teams[guild_channel + "-red"]
+            destroy_teams(ctx)
         except KeyError:
             pass
 
@@ -247,12 +285,11 @@ async def _stop(ctx):
 )
 async def _status(ctx):
     try:
-        guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
-        pug = pugs[guild_channel]
+        pug = get_pug(ctx)
         if pug.state == 1:
 
-            blue_team = teams[guild_channel + "-blue"]
-            red_team = teams[guild_channel + "-red"]
+            blue_team, red_team, = [x for x in get_teams(ctx)]
+
             await ctx.send(pug.pug_status("", blue_team, red_team))
         else:
             await ctx.send(pug.pug_status(""))
@@ -270,8 +307,7 @@ async def _status(ctx):
 async def _aadd(ctx, *args):
 
     try:
-        guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
-        pug = pugs[guild_channel]
+        pug = get_pug(ctx)
         position = args[-1]
         user = " ".join(args[:-1])
         user_id = "".join(x for x in user if x.isdigit())  # filters out non-digits
@@ -307,8 +343,8 @@ async def _aadd(ctx, *args):
 )
 async def _add(ctx, position: str):
     try:
-        guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
-        pug = pugs[guild_channel]
+
+        pug = get_pug(ctx)
     except KeyError:
         await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
         return
@@ -330,8 +366,7 @@ async def _add(ctx, position: str):
 @commands.has_role(PugAdmin)
 async def _aremove(ctx, *args):
     try:
-        guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
-        pug = pugs[guild_channel]
+        pug = get_pug(ctx)
         user = " ".join(args)
         user_id = "".join(x for x in user if x.isdigit())  # filters out non-digits
         disc_user = ctx.guild.get_member(int(user_id))
@@ -364,10 +399,7 @@ async def _aremove(ctx, *args):
 )
 async def _remove(ctx):
     try:
-        guild = ctx.guild.id
-        channel = ctx.channel.name
-        guild_channel_string = str(guild) + "-" + str(channel)
-        pug = pugs[guild_channel_string]
+        pug = get_pug(ctx)
     except KeyError:
         await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
         return
@@ -393,12 +425,8 @@ async def _remove(ctx):
 async def _apick(ctx, *args):
     global pugs, teams
     try:
-        guild = ctx.guild
-        channel = ctx.channel.name
-        guild_channel_string = str(ctx.guild.id) + "-" + str(channel)
-        pug = pugs[guild_channel_string]
-        blue_team = teams[guild_channel_string + "-blue"]
-        red_team = teams[guild_channel_string + "-red"]
+        pug = get_pug(ctx)
+        blue_team, red_team, = [x for x in get_teams(ctx)]
         user = " ".join(args)
         user_id = "".join(filter(lambda x: x.isdigit(), user))  # filters out non-digits
         disc_user = ctx.guild.get_member(int(user_id))
@@ -408,7 +436,7 @@ async def _apick(ctx, *args):
         return
     except ValueError:
         try:
-            disc_user = guild.get_member_named(user)
+            disc_user = ctx.guild.get_member_named(user)
             if disc_user is None:
                 raise KeyError("Could not find user")
         except KeyError:
@@ -417,74 +445,7 @@ async def _apick(ctx, *args):
                 "the name out exactly as it appears in their username."
             )
             return
-    if pug.state == 0:
-        await ctx.send(f"<@{ctx.author.id}> Pug not in pick phase.")
-        return
-    if pug.pick_order[pug.next_pick] == 1:
-
-        if (disc_user in pug.mid) or (disc_user in pug.keep) or (disc_user in pug.defs):
-            status_msg = f"{str(disc_user.name)} has been picked by **BLUE TEAM**"
-            pug.team_pick(blue_team, disc_user)
-
-            if (len(blue_team.defs) == blue_team.defs_limit) and (len(pug.defs) > 0):
-                status_msg += f"\n{str(pug.defs[0].name)} has been auto-assigned to **RED TEAM**"
-                pug.team_pick(red_team, pug.defs[0], False)
-                del pug.pick_order[-1]
-            if (len(blue_team.keep) == blue_team.keep_limit) and (len(pug.keep) > 0):
-                status_msg += f"\n{str(pug.keep[0].name)} has been auto-assigned to **RED TEAM**"
-                pug.team_pick(red_team, pug.keep[0], False)
-                del pug.pick_order[-1]
-            while len(blue_team.mid) == blue_team.mid_limit and (len(pug.mid) > 0):
-                status_msg += f"\n{str(pug.mid[0].name)} has been auto-assigned to **RED TEAM**"
-                pug.team_pick(red_team, pug.mid[0], False)
-                del pug.pick_order[-1]
-            await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
-            if pug.state == 2:
-                del pugs[guild_channel_string]
-                del pug
-                try:
-                    del teams[guild_channel_string + "-blue"]
-                    del teams[guild_channel_string + "-red"]
-                except:
-                    pass
-
-        else:
-            await ctx.send(
-                f"<@{ctx.author.id}> {str(disc_user.name)} is not a valid choice. Please pick a valid player."
-            )
-
-    elif pug.pick_order[pug.next_pick] == 2:
-        if (disc_user in pug.mid) or (disc_user in pug.keep) or (disc_user in pug.defs):
-            status_msg = f"{str(disc_user.name)} has been picked by **RED TEAM**"
-            pug.team_pick(red_team, disc_user)
-
-            if (len(red_team.defs) == red_team.defs_limit) and (len(pug.defs) > 0):
-                status_msg += f"\n{str(pug.defs[0].name)} has been auto-assigned to **BLUE TEAM**"
-                pug.team_pick(blue_team, pug.defs[0], False)
-                del pug.pick_order[-1]
-            if (len(red_team.keep) == red_team.keep_limit) and (len(pug.keep) > 0):
-                status_msg += f"\n{str(pug.keep[0].name)} has been auto-assigned to **BLUE TEAM**"
-                pug.team_pick(blue_team, pug.keep[0], False)
-                del pug.pick_order[-1]
-            while (len(red_team.mid) == red_team.mid_limit) and (len(pug.mid) > 0):
-                status_msg += f"\n{str(pug.mid[0].name)} has been auto-assigned to **BLUE TEAM**"
-                pug.team_pick(blue_team, pug.mid[0], False)
-                del pug.pick_order[-1]
-            await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
-            if pug.state == 2:
-                del pugs[guild_channel_string]
-                del pug
-                try:
-                    del teams[guild_channel_string + "-blue"]
-                    del teams[guild_channel_string + "-red"]
-                except:
-                    pass
-
-        else:
-            status_msg = f"{str(disc_user.name)} is not in the pug.**"
-            await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
-    else:
-        await ctx.send(f"something done borked")
+    await attempt_pick(ctx, pug, disc_user)
 
 
 @bot.command(
@@ -497,12 +458,8 @@ async def _apick(ctx, *args):
 async def _pick(ctx, *args):
     global pugs, teams
     try:
-        guild = ctx.guild
-        channel = ctx.channel.name
-        guild_channel_string = str(ctx.guild.id) + "-" + str(channel)
-        pug = pugs[guild_channel_string]
-        blue_team = teams[guild_channel_string + "-blue"]
-        red_team = teams[guild_channel_string + "-red"]
+        pug = get_pug(ctx)
+        blue_team, red_team, = [x for x in get_teams(ctx)]
         user = " ".join(args)
         user_id = "".join(filter(lambda x: x.isdigit(), user))  # filters out non-digits
         disc_user = ctx.guild.get_member(int(user_id))
@@ -512,7 +469,7 @@ async def _pick(ctx, *args):
         return
     except ValueError:
         try:
-            disc_user = guild.get_member_named(user)
+            disc_user = ctx.guild.get_member_named(user)
             if disc_user is None:
                 raise KeyError("Could not find user")
         except KeyError:
@@ -525,80 +482,13 @@ async def _pick(ctx, *args):
     if pug.state == 0:
         await ctx.send(f"<@{ctx.author.id}> Pug not in pick phase.")
         return
-    if pug.pick_order[pug.next_pick] == 1:
-
-        if ctx.author == blue_team.captain:
-            if (disc_user in pug.mid) or (disc_user in pug.keep) or (disc_user in pug.defs):
-                status_msg = f"{str(disc_user.name)} has been picked by **BLUE TEAM**"
-                pug.team_pick(blue_team, disc_user)
-
-                if len(blue_team.defs) == blue_team.defs_limit and len(pug.defs) > 0:
-                    status_msg += f"\n{str(pug.defs[0].name)} has been auto-assigned to **RED TEAM**"
-                    pug.team_pick(red_team, pug.defs[0], False)
-                    del pug.pick_order[-1]
-                if (len(blue_team.keep) == blue_team.keep_limit) and (len(pug.keep) > 0):
-                    status_msg += f"\n{str(pug.keep[0].name)} has been auto-assigned to **RED TEAM**"
-                    pug.team_pick(red_team, pug.keep[0], False)
-                    del pug.pick_order[-1]
-                while len(blue_team.mid) == blue_team.mid_limit and (len(pug.mid) > 0):
-                    status_msg += f"\n{str(pug.mid[0].name)} has been auto-assigned to **RED TEAM**"
-                    pug.team_pick(red_team, pug.mid[0], False)
-                    del pug.pick_order[-1]
-                await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
-                if pug.state == 2:
-                    del pugs[guild_channel_string]
-                    del pug
-                    try:
-                        del teams[guild_channel_string + "-blue"]
-                        del teams[guild_channel_string + "-red"]
-                    except:
-                        pass
-
-            else:
-                await ctx.send(
-                    f"<@{ctx.author.id}> {str(disc_user.name)} is not a valid choice. Please pick a valid player."
-                )
-
-        else:
-            await ctx.send(f"<@{ctx.author.id}> Look at me! {blue_team.captain.name} is the captain now!")
-
-    elif pug.pick_order[pug.next_pick] == 2:
-        if ctx.author == red_team.captain:
-            if (disc_user in pug.mid) or (disc_user in pug.keep) or (disc_user in pug.defs):
-                status_msg = f"{str(disc_user.name)} has been picked by **RED TEAM**"
-                pug.team_pick(red_team, disc_user)
-
-                if (len(red_team.defs) == red_team.defs_limit) and (len(pug.defs) > 0):
-                    status_msg += f"\n{str(pug.defs[0].name)} has been auto-assigned to **BLUE TEAM**"
-                    pug.team_pick(blue_team, pug.defs[0], False)
-                    del pug.pick_order[-1]
-                if (len(red_team.keep) == red_team.keep_limit) and (len(pug.keep) > 0):
-                    status_msg += f"\n{str(pug.keep[0].name)} has been auto-assigned to **BLUE TEAM**"
-                    pug.team_pick(blue_team, pug.keep[0], False)
-                    del pug.pick_order[-1]
-                while (len(red_team.mid) == red_team.mid_limit) and (len(pug.mid) > 0):
-                    status_msg += f"\n{str(pug.mid[0].name)} has been auto-assigned to **BLUE TEAM**"
-                    pug.team_pick(blue_team, pug.mid[0], False)
-                    del pug.pick_order[-1]
-                await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
-                if pug.state == 2:
-                    del pugs[guild_channel_string]
-                    del pug
-                    try:
-                        del teams[guild_channel_string + "-blue"]
-                        del teams[guild_channel_string + "-red"]
-                    except:
-                        pass
-
-            else:
-                status_msg = f"{str(disc_user.name)} is not in the pug.**"
-                await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
-
-        else:
-            await ctx.send(f"<@{ctx.author.id}> Look at me! {red_team.captain.name} is the captain now!")
-    else:
-        await ctx.send(f"something done borked")
-
+    if (pug.pick_order[pug.next_pick] == 1) and not (ctx.author == blue_team.captain):
+        await ctx.send(f"<@{ctx.author.id}> Look at me! {blue_team.captain.name} is the captain now!")
+        return
+    elif pug.pick_order[pug.next_pick] == 2 and not (ctx.author == red_team.captain):
+        await ctx.send(f"<@{ctx.author.id}> Look at me! {red_team.captain.name} is the captain now!")
+        return
+    await attempt_pick(ctx, pug, disc_user)
 
 @bot.command(
     name="spo",
