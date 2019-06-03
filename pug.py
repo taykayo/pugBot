@@ -58,6 +58,9 @@ class Pug:
         # Initialize pug data based on game size (3v3/5v5)
         self.pug_size = pug_size
         self.player_limit = pug_size * 2
+        self.mid = []
+        self.keep = []
+        self.defs = []
         if pug_size == 3:
             self.pick_order = [1, 2, 2, 1]
             self.mid_limit = 4

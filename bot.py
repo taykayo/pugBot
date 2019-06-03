@@ -8,11 +8,149 @@ config.read("config.ini")
 TOKEN = config["config"]["bot_token"]
 PugAdmin = config["config"]["PugbotAdmin"]
 description = "The NA Supraball PugBot, brought to you by Tiny Turtle"
-
+DEBUG = config["config"].getboolean("Debug")
 bot = commands.Bot(command_prefix="!", description=description)
 
 pugs = dict()
 teams = dict()
+
+
+async def start_picking(ctx):
+    guild = ctx.guild.id
+    channel = ctx.channel.name
+    guild_channel_string = str(guild) + "-" + str(channel)
+    pug = pugs[guild_channel_string]
+
+    blue_team = Team(pug.pug_size, "Blue")
+    red_team = Team(pug.pug_size, "Red")
+    teams[guild_channel_string + "-blue"] = blue_team
+    teams[guild_channel_string + "-red"] = red_team
+
+    status_msg = "Picking has started."
+    if not DEBUG:
+        for member in pug.mid + pug.defs + pug.keep:
+            await member.send("The pug you signed up has started. Teams will be picked very soon.")
+
+    if pug.pug_size == 5:
+        if pug.captains is None:
+            if random.randint(0, 1) == 0:
+                if random.randint(0, 1) == 0:  # keeper captains
+                    blue_team.add_player("keep", pug.keep[1])
+                    red_team.add_player("keep", pug.keep[0])
+                    blue_team.captain = pug.keep.pop(1)
+                    red_team.captain = pug.keep.pop(0)
+                else:
+                    blue_team.add_player("keep", pug.keep[0])
+                    red_team.add_player("keep", pug.keep[1])
+                    blue_team.captain = pug.keep.pop(0)
+                    red_team.captain = pug.keep.pop(0)
+            else:  # defender captains
+                if random.randint(0, 1) == 0:
+                    blue_team.add_player("defs", pug.defs[1])
+                    red_team.add_player("defs", pug.defs[0])
+                    blue_team.captain = pug.defs.pop(1)
+                    red_team.captain = pug.defs.pop(0)
+                else:
+                    blue_team.add_player("defs", pug.defs[0])
+                    red_team.add_player("defs", pug.defs[1])
+                    blue_team.captain = pug.defs.pop(0)
+                    red_team.captain = pug.defs.pop(0)
+        elif pug.captains == "d":
+            if random.randint(0, 1) == 0:
+                blue_team.add_player("defs", pug.defs[1])
+                red_team.add_player("defs", pug.defs[0])
+                blue_team.captain = pug.defs.pop(1)
+                red_team.captain = pug.defs.pop(0)
+            else:
+                blue_team.add_player("defs", pug.defs[0])
+                red_team.add_player("defs", pug.defs[1])
+                blue_team.captain = pug.defs.pop(0)
+                red_team.captain = pug.defs.pop(0)
+
+        else:
+            if random.randint(0, 1) == 0:  # keeper captains
+                blue_team.add_player("keep", pug.keep[1])
+                red_team.add_player("keep", pug.keep[0])
+                blue_team.captain = pug.keep.pop(1)
+                red_team.captain = pug.keep.pop(0)
+            else:
+                blue_team.add_player("keep", pug.keep[0])
+                red_team.add_player("keep", pug.keep[1])
+                blue_team.captain = pug.keep.pop(0)
+                red_team.captain = pug.keep.pop(0)
+
+    else:
+        if random.randint(0, 1) == 0:  # keeper captains
+            blue_team.add_player("keep", pug.keep[1])
+            red_team.add_player("keep", pug.keep[0])
+            blue_team.captain = pug.keep.pop(1)
+            red_team.captain = pug.keep.pop(0)
+        else:
+            blue_team.add_player("keep", pug.keep[0])
+            red_team.add_player("keep", pug.keep[1])
+            blue_team.captain = pug.keep.pop(0)
+            red_team.captain = pug.keep.pop(0)
+
+    await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
+
+
+async def attempt_add(ctx, pug, disc_user, position):
+    # Initialize which position user is attempting to add to
+    if position.lower() in ("m", "mid"):
+        position = pug.mid
+        position_limit = pug.mid_limit
+        position_string = "mid"
+        position_status = "midfielder"
+    elif position.lower() in ("k", "keep"):
+        position = pug.keep
+        position_limit = pug.keep_limit
+        position_string = "keep"
+        position_status = "keeper"
+    elif position.lower() in ("d", "def", "defender"):
+        position = pug.defs
+        position_limit = pug.def_limit
+        position_string = "defs"
+        position_status = "defender"
+    else:
+        await ctx.send(f"<@{ctx.author.id}> Invalid position.")
+        return
+
+    unused = [pug.mid, pug.defs, pug.keep]
+    unused.remove(position)  # The positions the user is not adding to
+    if disc_user in position:
+        await ctx.send(f"<@{ctx.author.id}> {disc_user.name} is already added to this position.")
+    else:
+        if len(position) >= position_limit:
+            await ctx.send(f"<@{ctx.author.id}> This position is full.")
+        else:
+            status_msg = f"{disc_user.name} has been signed up as a {position_status}."
+            if any((disc_user in x) for x in unused):  # checks if user is already signed up for another position
+                pug.remove_player(disc_user)
+                status_msg = f"{disc_user.name} has switched to {position_status}."  # Overwrite signup message with Switch message
+            pug.add_player(disc_user, position_string)
+
+            if pug.state == 0:
+                await ctx.send(pug.pug_status(status_msg))
+
+    if pug.state == 1:
+        await start_picking(ctx)
+
+
+async def attempt_remove(ctx, pug, disc_user):
+
+    if disc_user in pug.mid:
+        pug.remove_player(disc_user)
+        status_msg = f"{str(disc_user.name)} has been removed from the pug"
+    elif disc_user in pug.keep:
+        pug.remove_player(disc_user)
+        status_msg = f"{str(disc_user.name)} has been removed from the pug"
+    elif disc_user in pug.defs:
+        pug.remove_player(disc_user)
+        status_msg = f"{str(disc_user.name)} has been removed from the pug"
+    else:
+        await ctx.send(f"<@{ctx.author.id}> {str(disc_user.name)} is not signed up for this pug.")
+        return
+    await ctx.send(pug.pug_status(status_msg))
 
 
 @bot.event
@@ -83,10 +221,12 @@ async def _stop(ctx):
     global pugs, teams
     try:
         guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
-        pug = pugs.pop(guild_channel)
+        pug = pugs[guild_channel]
+        del pugs[guild_channel]
+        del pug
         try:
-            teams.pop(guild_channel + "-blue")
-            teams.pop(guild_channel + "-red")
+            del teams[guild_channel + "-blue"]
+            del teams[guild_channel + "-red"]
         except KeyError:
             pass
 
@@ -128,6 +268,7 @@ async def _status(ctx):
 )
 @commands.has_role(PugAdmin)
 async def _aadd(ctx, *args):
+
     try:
         guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
         pug = pugs[guild_channel]
@@ -142,11 +283,8 @@ async def _aadd(ctx, *args):
         try:
             disc_user = ctx.guild.get_member_named(user)
             if disc_user is None:
-                # raise a specific error if needed, not just Exception.
-                # sometimes you'll want to create your own error but raising built-ins is fine when they fit
                 raise KeyError("Could not find user")
-        # TODO: this logic could be better, figure out what exceptions you what to catch
-        except:
+        except KeyError:
             await ctx.send(
                 f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
                 "the name out exactly as it appears in their username."
@@ -156,54 +294,8 @@ async def _aadd(ctx, *args):
     if pug.state == 1:
         await ctx.send(f"<@{ctx.author.id}> Cannot add or remove during pick phase!")
         return
-    # TODO: lots of repeat code here, should be pretty easy to factor out into a function
-    if position in ("m", "M", "mid", "MID", "Mid"):
-        if disc_user in pug.mid:
-            await ctx.send(f"<@{ctx.author.id}> {disc_user.name} is already added to this position.")
-        else:
-            # TODO: do you really want to remove a player before knowing if the position is full? (same for k and d)
-            if (disc_user in pug.defs) or (disc_user in pug.keep):
-                pug.remove_player(disc_user)
-            if len(pug.mid) >= pug.mid_limit:
-                await ctx.send(f"<@{ctx.author.id}> This position is full.")
-            else:
-                pug.add_player(disc_user, "mid")
-                status_msg = f"{disc_user.name} has been signed up as a midfielder."
-                if pug.state == 0:
-                    await ctx.send(pug.pug_status(status_msg))
+    await attempt_add(ctx, pug, disc_user, position)
 
-    elif position in ("k", "K", "keep", "Keep", "KEEP"):
-        if disc_user in pug.keep:
-            await ctx.send(f"<@{ctx.author.id}> {str(disc_user.name)} is already added to this position.")
-        else:
-            if (disc_user in pug.defs) or (disc_user in pug.mid):
-                pug.remove_player(disc_user)
-            if len(pug.keep) >= pug.keep_limit:
-                await ctx.send(f"<@{ctx.author.id}> This position is full.")
-            else:
-                pug.add_player(disc_user, "keep")
-                status_msg = f"{disc_user.name} has been signed up as a keeper."
-                if pug.state == 0:
-                    await ctx.send(pug.pug_status(status_msg))
-
-    elif position in ("d", "D", "def", "Def", "Defender", "defender", "DEFENDER"):
-        if disc_user in pug.defs:
-            await ctx.send(f"<@{ctx.author.id}> {str(disc_user.name)} is already added to this position.")
-        else:
-            if (disc_user in pug.mid) or (disc_user in pug.keep):
-                pug.remove_player(disc_user)
-            if len(pug.defs) >= pug.def_limit:
-                await ctx.send(f"<@{ctx.author.id}> This position is full.")
-            else:
-                pug.add_player(disc_user, "defs")
-                status_msg = f"{str(disc_user.name)} has been signed up as a defender."
-                if pug.state == 0:
-                    await ctx.send(pug.pug_status(status_msg))
-
-    else:
-        await ctx.send(f"<@{ctx.author.id}> Invalid position.")
-    if pug.state == 1:
-        await start_picking(ctx)
 
 
 @bot.command(
@@ -224,53 +316,8 @@ async def _add(ctx, position: str):
         await ctx.send(f"<@{ctx.author.id}> Cannot add or remove during pick phase!")
         return
     disc_user = ctx.author
-    # TODO: again, very similar to the above logic
-    if position.lower() in ["mid", "m"]:
-        if disc_user in pug.mid:
-            await ctx.send(f"<@{ctx.author.id}> {disc_user.name} is already added to this position.")
-        else:
-            if (disc_user in pug.defs) or (disc_user in pug.keep):
-                pug.remove_player(disc_user)
-            if len(pug.mid) >= pug.mid_limit:
-                await ctx.send(f"<@{ctx.author.id}> This position is full.")
-            else:
-                pug.add_player(disc_user, "mid")
-                status_msg = f"{str(disc_user.name)} has signed up as a midfielder."
-                if pug.state == 0:
-                    await ctx.send(pug.pug_status(status_msg))
 
-    elif position.lower() in ["k", "keep"]:
-        if disc_user in pug.keep:
-            await ctx.send(f"<@{ctx.author.id}> {str(disc_user.name)} is already added to this position.")
-        else:
-            if (disc_user in pug.defs) or (disc_user in pug.mid):
-                pug.remove_player(disc_user)
-            if len(pug.keep) >= pug.keep_limit:
-                await ctx.send(f"<@{ctx.author.id}> This position is full.")
-            else:
-                pug.add_player(disc_user, "keep")
-                status_msg = f"{str(disc_user.name)} has signed up as a keeper."
-                if pug.state == 0:
-                    await ctx.send(pug.pug_status(status_msg))
-
-    elif position.lower() in ["d", "def", "defender"]:
-        if disc_user in pug.defs:
-            await ctx.send(f"<@{ctx.author.id}> {str(disc_user.name)} is already added to this position.")
-        else:
-            if (disc_user in pug.mid) or (disc_user in pug.keep):
-                pug.remove_player(disc_user)
-            if len(pug.defs) >= pug.def_limit:
-                await ctx.send(f"<@{ctx.author.id}> This position is full.")
-            else:
-                pug.add_player(disc_user, "defs")
-                status_msg = f"{str(disc_user.name)} has signed up as a defender."
-                if pug.state == 0:
-                    await ctx.send(pug.pug_status(status_msg))
-
-    else:
-        await ctx.send(f"<@{ctx.author.id}> Invalid position.")
-    if pug.state == 1:
-        await start_picking(ctx)
+    await attempt_add(ctx, pug, disc_user, position)
 
 
 @bot.command(
@@ -286,7 +333,6 @@ async def _aremove(ctx, *args):
         guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
         pug = pugs[guild_channel]
         user = " ".join(args)
-        print(user)
         user_id = "".join(x for x in user if x.isdigit())  # filters out non-digits
         disc_user = ctx.guild.get_member(int(user_id))
     except KeyError:
@@ -297,7 +343,7 @@ async def _aremove(ctx, *args):
             disc_user = ctx.guild.get_member_named(user)
             if disc_user is None:
                 raise KeyError("Could not find user")
-        except:
+        except KeyError:
             await ctx.send(
                 f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
                 "the name out exactly as it appears in their username."
@@ -307,19 +353,7 @@ async def _aremove(ctx, *args):
         await ctx.send(f"<@{ctx.author.id}> Cannot add or remove during pick phase!")
         return
 
-    if disc_user in pug.mid:
-        pug.remove_player(disc_user)
-        status_msg = f"{str(disc_user.name)} has been removed from the pug"
-    elif disc_user in pug.keep:
-        pug.remove_player(disc_user)
-        status_msg = f"{str(disc_user.name)} has been removed from the pug"
-    elif disc_user in pug.defs:
-        pug.remove_player(disc_user)
-        status_msg = f"{str(disc_user.name)} has been removed from the pug"
-    else:
-        await ctx.send(f"<@{ctx.author.id}> {str(disc_user.name)} is not signed up for this pug.")
-        return
-    await ctx.send(pug.pug_status(status_msg))
+    await attempt_remove(ctx, pug, disc_user)
 
 
 @bot.command(
@@ -342,97 +376,10 @@ async def _remove(ctx):
         return
     disc_user = ctx.author
 
-    if disc_user in pug.mid:
-        pug.remove_player(disc_user)
-        status_msg = f"{str(disc_user.name)} has been removed from the pug"
-    elif disc_user in pug.keep:
-        pug.remove_player(disc_user)
-        status_msg = f"{str(disc_user.name)} has been removed from the pug"
-    elif disc_user in pug.defs:
-        pug.remove_player(disc_user)
-        status_msg = f"{str(disc_user.name)} has been removed from the pug"
-    else:
-        await ctx.send(f"<@{ctx.author.id}> {str(disc_user.name)} is not signed up for this pug.")
-        return
-    await ctx.send(pug.pug_status(status_msg))
+    await attempt_remove(ctx, pug, disc_user)
 
 
-async def start_picking(ctx):
-    guild = ctx.guild.id
-    channel = ctx.channel.name
-    guild_channel_string = str(guild) + "-" + str(channel)
-    pug = pugs[guild_channel_string]
 
-    blue_team = Team(pug.pug_size, "Blue")
-    red_team = Team(pug.pug_size, "Red")
-    teams[guild_channel_string + "-blue"] = blue_team
-    teams[guild_channel_string + "-red"] = red_team
-
-    status_msg = "Picking has started."
-    for member in pug.mid + pug.defs + pug.keep:
-        await member.send("The pug you signed up has started. Teams will be picked very soon.")
-
-    if pug.pug_size == 5:
-        if pug.captains is None:
-            if random.randint(0, 1) == 0:
-                if random.randint(0, 1) == 0:  # keeper captains
-                    blue_team.add_player("keep", pug.keep[1])
-                    red_team.add_player("keep", pug.keep[0])
-                    blue_team.captain = pug.keep.pop(1)
-                    red_team.captain = pug.keep.pop(0)
-                else:
-                    blue_team.add_player("keep", pug.keep[0])
-                    red_team.add_player("keep", pug.keep[1])
-                    blue_team.captain = pug.keep.pop(0)
-                    red_team.captain = pug.keep.pop(0)
-            else:  # defender captains
-                if random.randint(0, 1) == 0:
-                    blue_team.add_player("defs", pug.defs[1])
-                    red_team.add_player("defs", pug.defs[0])
-                    blue_team.captain = pug.defs.pop(1)
-                    red_team.captain = pug.defs.pop(0)
-                else:
-                    blue_team.add_player("defs", pug.defs[0])
-                    red_team.add_player("defs", pug.defs[1])
-                    blue_team.captain = pug.defs.pop(0)
-                    red_team.captain = pug.defs.pop(0)
-        elif pug.captains == "d":
-            if random.randint(0, 1) == 0:
-                blue_team.add_player("defs", pug.defs[1])
-                red_team.add_player("defs", pug.defs[0])
-                blue_team.captain = pug.defs.pop(1)
-                red_team.captain = pug.defs.pop(0)
-            else:
-                blue_team.add_player("defs", pug.defs[0])
-                red_team.add_player("defs", pug.defs[1])
-                blue_team.captain = pug.defs.pop(0)
-                red_team.captain = pug.defs.pop(0)
-
-        else:
-            if random.randint(0, 1) == 0:  # keeper captains
-                blue_team.add_player("keep", pug.keep[1])
-                red_team.add_player("keep", pug.keep[0])
-                blue_team.captain = pug.keep.pop(1)
-                red_team.captain = pug.keep.pop(0)
-            else:
-                blue_team.add_player("keep", pug.keep[0])
-                red_team.add_player("keep", pug.keep[1])
-                blue_team.captain = pug.keep.pop(0)
-                red_team.captain = pug.keep.pop(0)
-
-    else:
-        if random.randint(0, 1) == 0:  # keeper captains
-            blue_team.add_player("keep", pug.keep[1])
-            red_team.add_player("keep", pug.keep[0])
-            blue_team.captain = pug.keep.pop(1)
-            red_team.captain = pug.keep.pop(0)
-        else:
-            blue_team.add_player("keep", pug.keep[0])
-            red_team.add_player("keep", pug.keep[1])
-            blue_team.captain = pug.keep.pop(0)
-            red_team.captain = pug.keep.pop(0)
-
-    await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
 
 
 @bot.command(
@@ -453,7 +400,6 @@ async def _apick(ctx, *args):
         blue_team = teams[guild_channel_string + "-blue"]
         red_team = teams[guild_channel_string + "-red"]
         user = " ".join(args)
-        print(user)
         user_id = "".join(filter(lambda x: x.isdigit(), user))  # filters out non-digits
         disc_user = ctx.guild.get_member(int(user_id))
 
@@ -464,8 +410,8 @@ async def _apick(ctx, *args):
         try:
             disc_user = guild.get_member_named(user)
             if disc_user is None:
-                raise Exception("Could not find user")
-        except:
+                raise KeyError("Could not find user")
+        except KeyError:
             await ctx.send(
                 f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
                 "the name out exactly as it appears in their username."
@@ -568,8 +514,8 @@ async def _pick(ctx, *args):
         try:
             disc_user = guild.get_member_named(user)
             if disc_user is None:
-                raise Exception("Could not find user")
-        except:
+                raise KeyError("Could not find user")
+        except KeyError:
             await ctx.send(
                 f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
                 "the name out exactly as it appears in their username."
