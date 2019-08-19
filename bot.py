@@ -97,7 +97,9 @@ async def attempt_add(ctx, game, disc_user, position):
             to_pick = game.check_player_count()
             if game.state == 0:  # Pug still in signup phase
                 await ctx.send(game.pug_status(status_msg))
-            elif to_pick == 1:  # only if game type is PUG and players were full
+            elif to_pick == 0:  # only if game type is PUG and players were full
+                await ctx.send(game.pug_status(status_msg))
+            elif to_pick == 0:  # only if game type is PUG and players were full
                 await start_picking(ctx)
 
 
@@ -105,15 +107,15 @@ async def attempt_remove(ctx, game, disc_user):
 
     if disc_user in game.mids:
         game.remove_player(disc_user)
-        status_msg = f"{str(disc_user.name)} has been removed from the pug"
+        status_msg = f"{str(disc_user.name)} has been removed."
     elif disc_user in game.keep:
         game.remove_player(disc_user)
-        status_msg = f"{str(disc_user.name)} has been removed from the pug"
+        status_msg = f"{str(disc_user.name)} has been removed."
     elif disc_user in game.defs:
         game.remove_player(disc_user)
-        status_msg = f"{str(disc_user.name)} has been removed from the pug"
+        status_msg = f"{str(disc_user.name)} has been removed."
     else:
-        await ctx.send(f"<@{ctx.author.id}> {str(disc_user.name)} is not signed up for this pug.")
+        await ctx.send(f"<@{ctx.author.id}> {str(disc_user.name)} is not signed up.")
         return
     await ctx.send(game.pug_status(status_msg))
 
@@ -337,6 +339,16 @@ async def _status(ctx):
     except KeyError:
         await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
 
+
+@bot.command(
+    name="team",
+)
+async def _team_status(ctx):
+    try:
+        team = get_team(ctx)
+        await ctx.send(team.pug_status(""))
+    except KeyError:
+        await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
 
 @bot.command(
     name="aadd",
@@ -678,6 +690,10 @@ async def _captains(ctx, captains: str):
 @_apick.error
 @_aadd.error
 @_stop.error
+@_tadd.error
+@_tremove.error
+@_create_team.error
+@_stop_team.error
 async def role_error(ctx, error):
     if isinstance(error, commands.MissingRole):
         await ctx.send(f"<@{ctx.author.id}> You do not have permission to use this command. ")

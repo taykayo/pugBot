@@ -228,11 +228,18 @@ class ScrimTeamReg(Game):
             return ", ".join(user.name for user in users)
 
         ret = ""
-        if self.state == 0:
-            ret += f"**\\|\\| Scrim Team Creation ({self.player_count}/{self.player_limit}): \\|\\|** \n"
-            ret += arg + "\n"
-            ret += f"**Keepers** [{len(self.keep)}/{self.keep_limit}] {str(get_names(self.keep))} \n"
-            ret += f"**Defenders** [{len(self.defs)}/{self.def_limit}] {str(get_names(self.defs))} \n"
-            ret += f"**Midfielders** [{len(self.mids)}/{self.mid_limit}] {str(get_names(self.mids))} \n\n"
 
+        ret += f"**\\|\\| Scrim Team Creation ({self.player_count}/{self.player_limit}): \\|\\|** \n"
+        ret += arg + "\n"
+        ret += f"**Keepers** [{len(self.keep)}/{self.keep_limit}] {str(get_names(self.keep))} \n"
+        ret += f"**Defenders** [{len(self.defs)}/{self.def_limit}] {str(get_names(self.defs))} \n"
+        ret += f"**Midfielders** [{len(self.mids)}/{self.mid_limit}] {str(get_names(self.mids))} \n\n"
+
+        if self.state == 1:
+            ret += f"Team is full, used !save [teamname] to save your team! \n\n"
         return ret
+
+    def check_player_count(self):
+        if self.player_limit == self.player_count:
+            self.state = 1
+            return 0
