@@ -93,12 +93,12 @@ async def attempt_add(ctx, pug, disc_user, position):
                 pug.remove_player(disc_user)
                 status_msg = f"{disc_user.name} has switched to {position_status}."  # Overwrite signup message with Switch message
             pug.add_player(disc_user, position_string)
-            pug.check_player_count()
-            if pug.state == 0:
+            to_pick = pug.check_player_count()
+            if pug.state == 0:  # Pug still in signup phase
                 await ctx.send(pug.pug_status(status_msg))
+            elif to_pick == 1:  # only if game type is PUG and players were full
+                await start_picking(ctx)
 
-    if pug.state == 1:
-        await start_picking(ctx)
 
 
 async def attempt_remove(ctx, pug, disc_user):

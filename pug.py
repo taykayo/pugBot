@@ -104,6 +104,10 @@ class Pug(Game):
     def check_player_count(self):
         if self.player_limit == self.player_count:
             self.state = 1
+            return 1
+        else:
+            return 0
+
 
     def pug_status(self, arg, *args):
         def get_names(users):
