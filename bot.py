@@ -1,6 +1,6 @@
 import random
 from discord.ext import commands
-from pug import Pug, PugTeam
+from pug import Pug, PugTeam, ScrimTeamReg
 import configparser
 
 config = configparser.ConfigParser()
@@ -13,6 +13,7 @@ bot = commands.Bot(command_prefix="!", description=description)
 
 pugs = dict()
 teams = dict()
+team_create = dict()
 
 
 async def start_picking(ctx):
@@ -59,28 +60,28 @@ async def start_picking(ctx):
     await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
 
 
-async def attempt_add(ctx, pug, disc_user, position):
+async def attempt_add(ctx, game, disc_user, position):
     # Initialize which position user is attempting to add to
     if position.lower() in ("m", "mid"):
-        position = pug.mids
-        position_limit = pug.mid_limit
+        position = game.mids
+        position_limit = game.mid_limit
         position_string = "mid"
         position_status = "midfielder"
     elif position.lower() in ("k", "keep"):
-        position = pug.keep
-        position_limit = pug.keep_limit
+        position = game.keep
+        position_limit = game.keep_limit
         position_string = "keep"
         position_status = "keeper"
     elif position.lower() in ("d", "def", "defender"):
-        position = pug.defs
-        position_limit = pug.def_limit
+        position = game.defs
+        position_limit = game.def_limit
         position_string = "defs"
         position_status = "defender"
     else:
         await ctx.send(f"<@{ctx.author.id}> Invalid position.")
         return
 
-    unused = [pug.mids, pug.defs, pug.keep]
+    unused = [game.mids, game.defs, game.keep]
     unused.remove(position)  # The positions the user is not adding to
     if disc_user in position:
         await ctx.send(f"<@{ctx.author.id}> {disc_user.name} is already added to this position.")
@@ -90,45 +91,44 @@ async def attempt_add(ctx, pug, disc_user, position):
         else:
             status_msg = f"{disc_user.name} has been signed up as a {position_status}."
             if any((disc_user in x) for x in unused):  # checks if user is already signed up for another position
-                pug.remove_player(disc_user)
+                game.remove_player(disc_user)
                 status_msg = f"{disc_user.name} has switched to {position_status}."  # Overwrite signup message with Switch message
-            pug.add_player(disc_user, position_string)
-            to_pick = pug.check_player_count()
-            if pug.state == 0:  # Pug still in signup phase
-                await ctx.send(pug.pug_status(status_msg))
+            game.add_player(disc_user, position_string)
+            to_pick = game.check_player_count()
+            if game.state == 0:  # Pug still in signup phase
+                await ctx.send(game.pug_status(status_msg))
             elif to_pick == 1:  # only if game type is PUG and players were full
                 await start_picking(ctx)
 
 
+async def attempt_remove(ctx, game, disc_user):
 
-async def attempt_remove(ctx, pug, disc_user):
-
-    if disc_user in pug.mids:
-        pug.remove_player(disc_user)
+    if disc_user in game.mids:
+        game.remove_player(disc_user)
         status_msg = f"{str(disc_user.name)} has been removed from the pug"
-    elif disc_user in pug.keep:
-        pug.remove_player(disc_user)
+    elif disc_user in game.keep:
+        game.remove_player(disc_user)
         status_msg = f"{str(disc_user.name)} has been removed from the pug"
-    elif disc_user in pug.defs:
-        pug.remove_player(disc_user)
+    elif disc_user in game.defs:
+        game.remove_player(disc_user)
         status_msg = f"{str(disc_user.name)} has been removed from the pug"
     else:
         await ctx.send(f"<@{ctx.author.id}> {str(disc_user.name)} is not signed up for this pug.")
         return
-    await ctx.send(pug.pug_status(status_msg))
+    await ctx.send(game.pug_status(status_msg))
 
 
-async def attempt_pick(ctx, pug, disc_user):
+async def attempt_pick(ctx, game, disc_user):
     blue_team, red_team, = [x for x in get_teams(ctx)]
-    if pug.state == 0:
+    if game.state == 0:
         await ctx.send(f"<@{ctx.author.id}> Pug not in pick phase.")
         return
-    if pug.pick_order[pug.next_pick] == 1:
+    if game.pick_order[game.next_pick] == 1:
         team = blue_team
         opp_team = red_team
         team_string = "BLUE TEAM"
         opp_string = "RED TEAM"
-    elif pug.pick_order[pug.next_pick] == 2:
+    elif game.pick_order[game.next_pick] == 2:
         team = red_team
         opp_team = blue_team
         team_string = "RED TEAM"
@@ -138,24 +138,24 @@ async def attempt_pick(ctx, pug, disc_user):
         await ctx.send(f"something done borked, call mr turtle")
         return
 
-    if any(disc_user in x for x in [pug.mids, pug.keep, pug.defs]):
+    if any(disc_user in x for x in [game.mids, game.keep, game.defs]):
         status_msg = f"{str(disc_user.name)} has been picked by **{team_string}**"
-        pug.team_pick(team, disc_user)
+        game.team_pick(team, disc_user)
 
-        if (len(team.defs) == team.defs_limit) and (len(pug.defs) > 0):
-            status_msg += f"\n{str(pug.defs[0].name)} has been auto-assigned to **{opp_string}**"
-            pug.team_pick(opp_team, pug.defs[0], False)
-            del pug.pick_order[-1]
-        if (len(team.keep) == team.keep_limit) and (len(pug.keep) > 0):
-            status_msg += f"\n{str(pug.keep[0].name)} has been auto-assigned to **{opp_string}**"
-            pug.team_pick(opp_team, pug.keep[0], False)
-            del pug.pick_order[-1]
-        while len(team.mids) == team.mid_limit and (len(pug.mids) > 0):
-            status_msg += f"\n{str(pug.mids[0].name)} has been auto-assigned to **{opp_string}**"
-            pug.team_pick(opp_team, pug.mids[0], False)
-            del pug.pick_order[-1]
-        await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
-        if pug.state == 2:
+        if (len(team.defs) == team.defs_limit) and (len(game.defs) > 0):
+            status_msg += f"\n{str(game.defs[0].name)} has been auto-assigned to **{opp_string}**"
+            game.team_pick(opp_team, game.defs[0], False)
+            del game.pick_order[-1]
+        if (len(team.keep) == team.keep_limit) and (len(game.keep) > 0):
+            status_msg += f"\n{str(game.keep[0].name)} has been auto-assigned to **{opp_string}**"
+            game.team_pick(opp_team, game.keep[0], False)
+            del game.pick_order[-1]
+        while len(team.mids) == team.mid_limit and (len(game.mids) > 0):
+            status_msg += f"\n{str(game.mids[0].name)} has been auto-assigned to **{opp_string}**"
+            game.team_pick(opp_team, game.mids[0], False)
+            del game.pick_order[-1]
+        await ctx.send(game.pug_status(status_msg, blue_team, red_team))
+        if game.state == 2:
             destroy_pug(ctx)
             try:
                 destroy_teams(ctx)
@@ -181,6 +181,13 @@ def get_teams(ctx):
 
     return [blue_team, red_team]
 
+def get_team(ctx):
+    guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
+    team = team_create[guild_channel]
+
+
+    return team
+
 
 def destroy_pug(ctx):
     guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
@@ -193,6 +200,11 @@ def destroy_teams(ctx):
     guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
     del teams[guild_channel + "-blue"]
     del teams[guild_channel + "-red"]
+
+
+def destroy_team_create(ctx):
+    guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
+    del team_create[guild_channel]
 
 
 @bot.event
@@ -249,6 +261,23 @@ async def _start(ctx, pug_size: int):
 
 
 @bot.command(
+    name="create_team"
+)
+async def _create_team(ctx):
+    global team_create
+    guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
+    #TODO Should make it check ONLY guild.id so that only one team can be in creation per server at any given time so as not to have race condition both teams saving at same time
+
+    if guild_channel in team_create.keys():
+        await ctx.send(f"<@{ctx.author.id}> There is already a team being created in this channel.")
+    else:
+        pug = ScrimTeamReg()
+        team_create[guild_channel] = pug
+
+        await ctx.send(f"{pug.pug_status('Scrim team creation has started.')}")
+
+
+@bot.command(
     name="stop",
     aliases=["Stop", "STOP"],
     help="Used to stop a pug match",
@@ -273,6 +302,18 @@ async def _stop(ctx):
         await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
         return
 
+
+@bot.command(
+    name="stop_team"
+)
+async def _stop_team(ctx):
+    global pugs, teams
+    try:
+        destroy_team_create(ctx)
+        await ctx.send(f"<@{ctx.author.id}> Team creation has been ended. ")
+    except KeyError:
+        await ctx.send(f"<@{ctx.author.id}> No team creation in progress. ")
+        return
 
 @bot.command(
     aliases=["list", "players", "teams"],
@@ -333,6 +374,34 @@ async def _aadd(ctx, *args):
     await attempt_add(ctx, pug, disc_user, position)
 
 
+@bot.command(
+    name="tadd",
+    usage="<@user> <position>",
+)
+@commands.has_role(PugAdmin)
+async def _tadd(ctx, *args):
+
+    try:
+        team = get_team(ctx)
+        position = args[-1]
+        user = " ".join(args[:-1])
+        user_id = "".join(x for x in user if x.isdigit())  # filters out non-digits
+        disc_user = ctx.guild.get_member(int(user_id))
+    except KeyError:
+        await ctx.send(f"<@{ctx.author.id}> No team in creation ")
+        return
+    except ValueError:
+        try:
+            disc_user = ctx.guild.get_member_named(user)
+            if disc_user is None:
+                raise KeyError("Could not find user")
+        except KeyError:
+            await ctx.send(
+                f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
+                "the name out exactly as it appears in their username."
+            )
+            return
+    await attempt_add(ctx, team, disc_user, position)
 
 @bot.command(
     name="add",
@@ -389,6 +458,34 @@ async def _aremove(ctx, *args):
         return
 
     await attempt_remove(ctx, pug, disc_user)
+
+
+@bot.command(
+    name="tremove",
+    usage="<@user>",
+)
+@commands.has_role(PugAdmin)
+async def _tremove(ctx, *args):
+    try:
+        team = get_team(ctx)
+        user = " ".join(args)
+        user_id = "".join(x for x in user if x.isdigit())  # filters out non-digits
+        disc_user = ctx.guild.get_member(int(user_id))
+    except KeyError:
+        await ctx.send(f"<@{ctx.author.id}> No team in creation. ")
+        return
+    except ValueError:
+        try:
+            disc_user = ctx.guild.get_member_named(user)
+            if disc_user is None:
+                raise KeyError("Could not find user")
+        except KeyError:
+            await ctx.send(
+                f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
+                "the name out exactly as it appears in their username."
+            )
+            return
+    await attempt_remove(ctx, team, disc_user)
 
 
 @bot.command(

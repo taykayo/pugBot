@@ -51,11 +51,22 @@ class PugTeam(Team):
             self.mid_limit = 3
             self.player_limit = 5
 
+class ScrimTeam(Team):
+    def __init__(self):
+        super().__init__()
+        self.color = "Blue"
+        self.name = ""
+        self.pug_size = 5
+        self.keep_limit = 1
+        self.defs_limit = 1
+        self.mid_limit = 3
+        self.player_limit = 5
+
+
 class Game:
     def __init__(self):
         self.player_count = 0
         self.state = 0
-        self.keep_limit = 2
         self.mids = []
         self.keep = []
         self.defs = []
@@ -95,11 +106,13 @@ class Pug(Game):
             self.pick_order = [1, 2, 2, 1]
             self.mid_limit = 4
             self.def_limit = 0
+            self.keep_limit = 2
         if pug_size == 5:
             # standard for NA, alternate is blitz
             self.pick_order = [1, 2, 2, 1, 2, 1, 2]
             self.mid_limit = 6
             self.def_limit = 2
+            self.keep_limit = 2
 
     def check_player_count(self):
         if self.player_limit == self.player_count:
@@ -200,3 +213,26 @@ class Pug(Game):
 
     def set_captains(self, captains):
         self.captains = captains
+
+
+class ScrimTeamReg(Game):
+    def __init__(self):
+        super().__init__()
+        self.player_limit = 5
+        self.keep_limit = 1
+        self.mid_limit = 3
+        self.def_limit = 1
+
+    def pug_status(self, arg, *args):
+        def get_names(users):
+            return ", ".join(user.name for user in users)
+
+        ret = ""
+        if self.state == 0:
+            ret += f"**\\|\\| Scrim Team Creation ({self.player_count}/{self.player_limit}): \\|\\|** \n"
+            ret += arg + "\n"
+            ret += f"**Keepers** [{len(self.keep)}/{self.keep_limit}] {str(get_names(self.keep))} \n"
+            ret += f"**Defenders** [{len(self.defs)}/{self.def_limit}] {str(get_names(self.defs))} \n"
+            ret += f"**Midfielders** [{len(self.mids)}/{self.mid_limit}] {str(get_names(self.mids))} \n\n"
+
+        return ret
