@@ -3,30 +3,16 @@ red_team = None
 
 
 class Team:
-    def __init__(self, pug_size, color):
+    def __init__(self):
         # Initialize Team Data
-        self.color = color
-        self.name = color + "Team"
-        if self.color == "Blue":
-            self.pick_id = 1
-        else:
-            self.pick_id = 2
-        self.mid = []
+        self.mids = []
         self.keep = []
         self.defs = []
-        self.captain = None
-        if pug_size == 3:
-            self.keep_limit = 1
-            self.defs_limit = 0
-            self.mid_limit = 2
-        if pug_size == 5:
-            self.keep_limit = 1
-            self.defs_limit = 1
-            self.mid_limit = 3
+        self.player_count = 0
 
     def add_player(self, position, user):
         if position == "mid":
-            self.mid.append(user)
+            self.mids.append(user)
         elif position == "keep":
             self.keep.append(user)
         elif position == "defs":
@@ -38,39 +24,86 @@ class Team:
             team.append(f"(K) {self.keep[0].name}")
         if self.defs:
             team.append(f"(D) {self.defs[0].name}")
-        mid_string = ", ".join(f"(M) {x.name}" for x in self.mid)
-        team.append(mid_string)
+        if self.mids:
+            mid_string = ", ".join(f"(M) {x.name}" for x in self.mids)
+            team.append(mid_string)
         return ", ".join(team)
 
 
-class Pug:
-    player_count = 0
-    keep_limit = 2
-    state = 0  # 0 = Queuing, 1 = Picking, 3 finished
-    mid = []
-    keep = []
-    defs = []
+class PugTeam(Team):
+    def __init__(self, pug_size, color):
+        super().__init__()
+        self.color = color
+        self.name = color + "Team"
+        if self.color == "Blue":
+            self.pick_id = 1
+        else:
+            self.pick_id = 2
+        self.captain = None
+        if pug_size == 3:
+            self.keep_limit = 1
+            self.defs_limit = 0
+            self.mid_limit = 2
+            self.player_limit = 3
+        if pug_size == 5:
+            self.keep_limit = 1
+            self.defs_limit = 1
+            self.mid_limit = 3
+            self.player_limit = 5
+
+class Game:
+    def __init__(self):
+        self.player_count = 0
+        self.state = 0
+        self.keep_limit = 2
+        self.mids = []
+        self.keep = []
+        self.defs = []
+
+    def check_player_count(self):
+        pass
+
+    def add_player(self, user, position):
+        if position == "mid":
+            self.mids.append(user)
+        elif position == "keep":
+            self.keep.append(user)
+        elif position == "defs":
+            self.defs.append(user)
+        self.player_count = len(self.mids) + len(self.keep) + len(self.defs)
+
+    def remove_player(self, user):
+        if user in self.mids:
+            self.mids.remove(user)
+        elif user in self.keep:
+            self.keep.remove(user)
+        elif user in self.defs:
+            self.defs.remove(user)
+        self.player_count = len(self.mids) + len(self.keep) + len(self.defs)
+
+class Pug(Game):
     captains = None
     pick_order_str = "Normal"
     next_pick = 0
 
     def __init__(self, pug_size):
+        super().__init__()
         # Initialize pug data based on game size (3v3/5v5)
         self.pug_size = pug_size
         self.player_limit = pug_size * 2
-        self.mid = []
-        self.keep = []
-        self.defs = []
         if pug_size == 3:
             self.pick_order = [1, 2, 2, 1]
             self.mid_limit = 4
             self.def_limit = 0
-
         if pug_size == 5:
             # standard for NA, alternate is blitz
             self.pick_order = [1, 2, 2, 1, 2, 1, 2]
             self.mid_limit = 6
             self.def_limit = 2
+
+    def check_player_count(self):
+        if self.player_limit == self.player_count:
+            self.state = 1
 
     def pug_status(self, arg, *args):
         def get_names(users):
@@ -90,7 +123,7 @@ class Pug:
             if self.pug_size == 5:
                 ret += f"**Defenders** [{len(self.defs)}/{self.def_limit}] {str(get_names(self.defs))} \n"
 
-            ret += f"**Midfielders** [{len(self.mid)}/{self.mid_limit}] {str(get_names(self.mid))} \n\n"
+            ret += f"**Midfielders** [{len(self.mids)}/{self.mid_limit}] {str(get_names(self.mids))} \n\n"
             if self.pug_size == 5:
                 ret += f"**Pug Type**: Normal 5v5 \n"
                 ret += f"**Captains**: {pug_captains}\n"
@@ -114,8 +147,8 @@ class Pug:
                 ret += f"**Keepers** [{len(self.keep)}] {str(get_names(self.keep))} \n"
             if len(self.defs) > 0:
                 ret += f"**Defenders** [{len(self.defs)}] {str(get_names(self.defs))} \n"
-            if len(self.mid) > 0:
-                ret += f"**Midfielders** [{len(self.mid)}] {str(get_names(self.mid))} \n\n"
+            if len(self.mids) > 0:
+                ret += f"**Midfielders** [{len(self.mids)}] {str(get_names(self.mids))} \n\n"
             ret += f"**Blue Team** - Captain {blue_team.captain.name} \n {blue_team.team_string()} \n\n "
             ret += f"**Red Team** - Captain {red_team.captain.name} \n {red_team.team_string()} \n\n "
             ret += f"**Pick Order Progress**: {po_string}  \n"
@@ -132,33 +165,13 @@ class Pug:
             ret += f"**Red Team** - Captain {red_team.captain.name} \n {red_team.team_string()} \n\n "
         return ret
 
-    def add_player(self, user, position):
-        if position == "mid":
-            self.mid.append(user)
-        elif position == "keep":
-            self.keep.append(user)
-        elif position == "defs":
-            self.defs.append(user)
-        self.player_count = len(self.mid) + len(self.keep) + len(self.defs)
-        if self.player_count == self.player_limit:
-            self.state = 1
-
-    def remove_player(self, user):
-        if user in self.mid:
-            self.mid.remove(user)
-        elif user in self.keep:
-            self.keep.remove(user)
-        elif user in self.defs:
-            self.defs.remove(user)
-        self.player_count = len(self.mid) + len(self.keep) + len(self.defs)
-
     def team_pick(self, team, user, *auto):
         if not auto:
             self.next_pick += 1
 
-        if user in self.mid:
+        if user in self.mids:
             team.add_player("mid", user)
-            self.mid.remove(user)
+            self.mids.remove(user)
         elif user in self.keep:
             team.add_player("keep", user)
             self.keep.remove(user)
@@ -166,7 +179,7 @@ class Pug:
             team.add_player("defs", user)
             self.defs.remove(user)
 
-        self.player_count = len(self.mid) + len(self.keep) + len(self.defs)
+        self.player_count = len(self.mids) + len(self.keep) + len(self.defs)
         if self.player_count == 0:
             self.state = 2
 

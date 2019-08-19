@@ -1,6 +1,6 @@
 import random
 from discord.ext import commands
-from pug import Pug, Team
+from pug import Pug, PugTeam
 import configparser
 
 config = configparser.ConfigParser()
@@ -45,14 +45,14 @@ async def start_picking(ctx):
     guild_channel_string = str(guild) + "-" + str(channel)
     pug = pugs[guild_channel_string]
 
-    blue_team = Team(pug.pug_size, "Blue")
-    red_team = Team(pug.pug_size, "Red")
+    blue_team = PugTeam(pug.pug_size, "Blue")
+    red_team = PugTeam(pug.pug_size, "Red")
     teams[guild_channel_string + "-blue"] = blue_team
     teams[guild_channel_string + "-red"] = red_team
 
     status_msg = "Picking has started."
     if not DEBUG:
-        for member in pug.mid + pug.defs + pug.keep:
+        for member in pug.mids + pug.defs + pug.keep:
             await member.send("The pug you signed up has started. Teams will be picked very soon.")
 
     pick_captains()
@@ -62,7 +62,7 @@ async def start_picking(ctx):
 async def attempt_add(ctx, pug, disc_user, position):
     # Initialize which position user is attempting to add to
     if position.lower() in ("m", "mid"):
-        position = pug.mid
+        position = pug.mids
         position_limit = pug.mid_limit
         position_string = "mid"
         position_status = "midfielder"
@@ -80,7 +80,7 @@ async def attempt_add(ctx, pug, disc_user, position):
         await ctx.send(f"<@{ctx.author.id}> Invalid position.")
         return
 
-    unused = [pug.mid, pug.defs, pug.keep]
+    unused = [pug.mids, pug.defs, pug.keep]
     unused.remove(position)  # The positions the user is not adding to
     if disc_user in position:
         await ctx.send(f"<@{ctx.author.id}> {disc_user.name} is already added to this position.")
@@ -93,7 +93,7 @@ async def attempt_add(ctx, pug, disc_user, position):
                 pug.remove_player(disc_user)
                 status_msg = f"{disc_user.name} has switched to {position_status}."  # Overwrite signup message with Switch message
             pug.add_player(disc_user, position_string)
-
+            pug.check_player_count()
             if pug.state == 0:
                 await ctx.send(pug.pug_status(status_msg))
 
@@ -103,7 +103,7 @@ async def attempt_add(ctx, pug, disc_user, position):
 
 async def attempt_remove(ctx, pug, disc_user):
 
-    if disc_user in pug.mid:
+    if disc_user in pug.mids:
         pug.remove_player(disc_user)
         status_msg = f"{str(disc_user.name)} has been removed from the pug"
     elif disc_user in pug.keep:
@@ -138,7 +138,7 @@ async def attempt_pick(ctx, pug, disc_user):
         await ctx.send(f"something done borked, call mr turtle")
         return
 
-    if any(disc_user in x for x in [pug.mid, pug.keep, pug.defs]):
+    if any(disc_user in x for x in [pug.mids, pug.keep, pug.defs]):
         status_msg = f"{str(disc_user.name)} has been picked by **{team_string}**"
         pug.team_pick(team, disc_user)
 
@@ -150,9 +150,9 @@ async def attempt_pick(ctx, pug, disc_user):
             status_msg += f"\n{str(pug.keep[0].name)} has been auto-assigned to **{opp_string}**"
             pug.team_pick(opp_team, pug.keep[0], False)
             del pug.pick_order[-1]
-        while len(team.mid) == team.mid_limit and (len(pug.mid) > 0):
-            status_msg += f"\n{str(pug.mid[0].name)} has been auto-assigned to **{opp_string}**"
-            pug.team_pick(opp_team, pug.mid[0], False)
+        while len(team.mids) == team.mid_limit and (len(pug.mids) > 0):
+            status_msg += f"\n{str(pug.mids[0].name)} has been auto-assigned to **{opp_string}**"
+            pug.team_pick(opp_team, pug.mids[0], False)
             del pug.pick_order[-1]
         await ctx.send(pug.pug_status(status_msg, blue_team, red_team))
         if pug.state == 2:
