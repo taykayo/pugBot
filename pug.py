@@ -1,3 +1,5 @@
+import configparser
+
 blue_team = None
 red_team = None
 
@@ -242,4 +244,32 @@ class ScrimTeamReg(Game):
     def check_player_count(self):
         if self.player_limit == self.player_count:
             self.state = 1
+            return 0
+        elif self.player_limit > self.player_count:
+            self.state = 0
+            return 0
+
+
+    def save(self, team_name):
+
+        #RETURN CODE: 0 fail, 1 success, 2 Teamname already exists
+        try:
+            config = configparser.ConfigParser()
+            config.optionxform = str
+            config.read("config.ini")
+            print(config)
+            if team_name in config:
+                return 2
+            else:
+                config[f"{team_name}"] = {
+                    self.mids[0]: "mid",
+                    self.mids[1]: "mid",
+                    self.mids[2]: "mid",
+                    self.defs[0]: "defs",
+                    self.keep[0]: "keep"
+                }
+            with open('config.ini', 'w') as configfile:
+                config.write(configfile)
+            return 1
+        except:
             return 0

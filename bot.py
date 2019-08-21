@@ -1,14 +1,16 @@
 import random
+import discord
 from discord.ext import commands
-from pug import Pug, PugTeam, ScrimTeamReg
+from pug import Pug, PugTeam, ScrimTeamReg, ScrimTeam
 import configparser
 
 config = configparser.ConfigParser()
+config.optionxform = str
 config.read("config.ini")
 TOKEN = config["config"]["bot_token"]
 PugAdmin = config["config"]["PugbotAdmin"]
 description = "The NA Supraball PugBot, brought to you by Tiny Turtle"
-DEBUG = config["config"].getboolean("Debug")
+DEBUG = config["config"].getboolean("DEBUG")
 bot = commands.Bot(command_prefix="!", description=description)
 
 pugs = dict()
@@ -95,11 +97,11 @@ async def attempt_add(ctx, game, disc_user, position):
                 status_msg = f"{disc_user.name} has switched to {position_status}."  # Overwrite signup message with Switch message
             game.add_player(disc_user, position_string)
             to_pick = game.check_player_count()
-            if game.state == 0:  # Pug still in signup phase
+            if game.state == 0:  # still in signup phase
                 await ctx.send(game.pug_status(status_msg))
-            elif to_pick == 0:  # only if game type is PUG and players were full
+            elif to_pick == 0:
                 await ctx.send(game.pug_status(status_msg))
-            elif to_pick == 0:  # only if game type is PUG and players were full
+            elif to_pick == 1:  # only if game type is PUG and players were full
                 await start_picking(ctx)
 
 
@@ -107,12 +109,15 @@ async def attempt_remove(ctx, game, disc_user):
 
     if disc_user in game.mids:
         game.remove_player(disc_user)
+        to_pick = game.check_player_count()
         status_msg = f"{str(disc_user.name)} has been removed."
     elif disc_user in game.keep:
         game.remove_player(disc_user)
+        to_pick = game.check_player_count()
         status_msg = f"{str(disc_user.name)} has been removed."
     elif disc_user in game.defs:
         game.remove_player(disc_user)
+        to_pick = game.check_player_count()
         status_msg = f"{str(disc_user.name)} has been removed."
     else:
         await ctx.send(f"<@{ctx.author.id}> {str(disc_user.name)} is not signed up.")
@@ -182,6 +187,7 @@ def get_teams(ctx):
     red_team = teams[guild_channel + "-red"]
 
     return [blue_team, red_team]
+
 
 def get_team(ctx):
     guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
@@ -308,6 +314,7 @@ async def _stop(ctx):
 @bot.command(
     name="stop_team"
 )
+@commands.has_role(PugAdmin)
 async def _stop_team(ctx):
     global pugs, teams
     try:
@@ -343,12 +350,40 @@ async def _status(ctx):
 @bot.command(
     name="team",
 )
-async def _team_status(ctx):
-    try:
-        team = get_team(ctx)
-        await ctx.send(team.pug_status(""))
-    except KeyError:
-        await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
+async def _team_status(ctx, *args):
+    config.read("config.ini")
+    if args:
+        team_name = " ".join(args)
+        if team_name in config:
+            team = ScrimTeam()
+            for player in config[team_name]:
+                player_obj = discord.Guild.get_member_named(ctx.guild, player)
+                position = config[team_name][player]
+                team.add_player(position, player_obj)
+            await ctx.send(f"{team_name}: \n {team.team_string()}")
+
+
+        else:
+            await ctx.send(f"<@{ctx.author.id}> Team does not exist.")
+
+    else:
+        try:
+            team = get_team(ctx)
+            await ctx.send(team.pug_status(""))
+        except KeyError:
+            await ctx.send(f"<@{ctx.author.id}> No team creation in progress, use !create_team. ")
+
+
+
+
+@bot.command(
+    name="teamlist",
+)
+async def _team_list(ctx):
+    config.read("config.ini")
+    teamlist = '\n- '.join(config.sections()[1:])
+    await ctx.send(f"   **Team List:** \n- {teamlist}")
+
 
 @bot.command(
     name="aadd",
@@ -520,6 +555,39 @@ async def _remove(ctx):
     await attempt_remove(ctx, pug, disc_user)
 
 
+@bot.command(
+    name="save",
+)
+@commands.has_role(PugAdmin)
+async def _save(ctx, *args):
+    try:
+        team = get_team(ctx)
+        teamname = " ".join(args)
+    except KeyError:
+        await ctx.send(f"<@{ctx.author.id}> No team in creation. ")
+        return
+    if team.state == 1:
+        passfail = team.save(teamname)
+
+        if passfail == 0:
+            await ctx.send(
+                f"<@{ctx.author.id}> Team failed to save. Idk why it would fail so tell turtle to figure it out."
+            )
+        elif passfail == 1:
+            await ctx.send(
+                f"<@{ctx.author.id}> Team {teamname} successfully saved!"
+            )
+            config.read("config.ini")
+            destroy_team_create(ctx)
+        elif passfail == 2:
+            await ctx.send(
+                f"<@{ctx.author.id}> A team with the name {teamname} already exists, please try again with a different team name!"
+            )
+
+    else:
+        await ctx.send(
+            f"<@{ctx.author.id}> Team is not full yet!"
+        )
 
 
 
@@ -694,6 +762,7 @@ async def _captains(ctx, captains: str):
 @_tremove.error
 @_create_team.error
 @_stop_team.error
+@_save.error
 async def role_error(ctx, error):
     if isinstance(error, commands.MissingRole):
         await ctx.send(f"<@{ctx.author.id}> You do not have permission to use this command. ")
