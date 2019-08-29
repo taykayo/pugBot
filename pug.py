@@ -94,6 +94,7 @@ class Game:
             self.defs.remove(user)
         self.player_count = len(self.mids) + len(self.keep) + len(self.defs)
 
+
 class Pug(Game):
     captains = None
     pick_order_str = "Normal"
@@ -168,8 +169,8 @@ class Pug(Game):
                 ret += f"**Defenders** [{len(self.defs)}] {str(get_names(self.defs))} \n"
             if len(self.mids) > 0:
                 ret += f"**Midfielders** [{len(self.mids)}] {str(get_names(self.mids))} \n\n"
-            ret += f"**Blue Team** - Captain {blue_team.captain.name} \n {blue_team.team_string()} \n\n "
-            ret += f"**Red Team** - Captain {red_team.captain.name} \n {red_team.team_string()} \n\n "
+            ret += f"**Blue Team** - Captain {blue_team.captain.name} \n {blue_team.team_string()} \n\n"
+            ret += f"**Red Team** - Captain {red_team.captain.name} \n {red_team.team_string()} \n\n"
             ret += f"**Pick Order Progress**: {po_string}  \n"
             if self.pick_order[self.next_pick] == 1:
                 ret += f"**BLUE TEAM** (<@{blue_team.captain.id}>), Please pick a player."
@@ -180,7 +181,7 @@ class Pug(Game):
             blue_team = args[0]
             red_team = args[1]
             ret += f"**\\|\\| Match is starting, have fun! \\|\\|** \n"
-            ret += f"**Blue Team** - Captain {blue_team.captain.name} \n {blue_team.team_string()} \n\n "
+            ret += f"**Blue Team** - Captain {blue_team.captain.name} \n {blue_team.team_string()} \n\n"
             ret += f"**Red Team** - Captain {red_team.captain.name} \n {red_team.team_string()} \n\n "
         return ret
 
@@ -273,3 +274,49 @@ class ScrimTeamReg(Game):
             return 1
         except:
             return 0
+
+
+class Scrim(Game):
+
+    def __init__(self, team):
+        super().__init__()
+        # Initialize pug data
+        self.pug_size = 5
+        self.player_limit = 5
+        self.mid_limit = 3
+        self.def_limit = 1
+        self.keep_limit = 1
+        self.team = team
+
+    def check_player_count(self):
+        if self.player_limit == self.player_count:
+            self.state = 1
+            return 2
+        else:
+            return 0
+
+    def pug_status(self, arg, *args):
+        def get_names(users):
+            return ", ".join(user.name for user in users)
+
+        ret = ""
+        if self.state == 0:
+
+            ret += f"**\\|\\| Signing up ({self.player_count}/{self.player_limit}): \\|\\|** \n"
+            ret += f"**Scrim VS {self.team.name}** {self.team.team_string()} \n \n"
+            ret += arg + "\n"
+            ret += f"**Keepers** [{len(self.keep)}/{self.keep_limit}] {str(get_names(self.keep))} \n"
+            if self.pug_size == 5:
+                ret += f"**Defenders** [{len(self.defs)}/{self.def_limit}] {str(get_names(self.defs))} \n"
+
+            ret += f"**Midfielders** [{len(self.mids)}/{self.mid_limit}] {str(get_names(self.mids))} \n\n"
+
+
+        elif self.state == 1:
+            # TODO: blue_team and red_team should either be declared as global (if that's the intent) or renamed
+            ret += f"**\\|\\| Match is starting, have fun! \\|\\|** \n"
+            ret += f"**{self.team.name}** - {self.team.team_string()} \n\n"
+            ret += f"**Challengers** - {arg.team_string()} \n\n"
+        return ret
+
+

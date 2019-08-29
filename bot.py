@@ -1,7 +1,7 @@
 import random
 import discord
 from discord.ext import commands
-from pug import Pug, PugTeam, ScrimTeamReg, ScrimTeam
+from pug import Pug, PugTeam, ScrimTeamReg, ScrimTeam, Scrim
 import configparser
 
 config = configparser.ConfigParser()
@@ -63,6 +63,7 @@ async def start_picking(ctx):
 
 
 async def attempt_add(ctx, game, disc_user, position):
+    global pugs
     # Initialize which position user is attempting to add to
     if position.lower() in ("m", "mid"):
         position = game.mids
@@ -103,6 +104,17 @@ async def attempt_add(ctx, game, disc_user, position):
                 await ctx.send(game.pug_status(status_msg))
             elif to_pick == 1:  # only if game type is PUG and players were full
                 await start_picking(ctx)
+            elif to_pick == 2:
+                randoTeam = ScrimTeam()
+                for player in game.mids:
+                    randoTeam.add_player("mid", player)
+                randoTeam.add_player("defs", game.defs[0])
+                randoTeam.add_player("keep", game.keep[0])
+                await ctx.send(game.pug_status(randoTeam))
+                destroy_pug(ctx)
+
+            else:
+                pass
 
 
 async def attempt_remove(ctx, game, disc_user):
@@ -193,7 +205,6 @@ def get_team(ctx):
     guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
     team = team_create[guild_channel]
 
-
     return team
 
 
@@ -243,7 +254,7 @@ async def _prefix(ctx, new_prefix: str):
         "This command starts a channel specific pug which users can queue for. Users will be notified once the pug has "
         "reached the required amount of players. This works with both 3v3 and 5v5 pugs."
     ),
-    usage="<3|5>",
+    usage="<3|5|[teamname]>",
     description=(
         "Instantiates the pug class specific to server-channel, allows users to add to queue. "
         "Once queue has reached capacity, pug changes to picking state, instantiate two teams (blue and red). "
@@ -251,21 +262,41 @@ async def _prefix(ctx, new_prefix: str):
     ),
     aliases=["START"],
 )
-async def _start(ctx, pug_size: int):
-    global pugs
+async def _start(ctx, *args):
+    global pugs, config
+    config.read("config.ini")
     guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
+    try:
+        data = " ".join(args)
+    except:
+        pass
 
     if guild_channel in pugs.keys():
-        await ctx.send(f"<@{ctx.author.id}> There is already an ongoing pug in this channel.")
+        await ctx.send(f"<@{ctx.author.id}> There is already an ongoing game in this channel.")
     else:
-        if pug_size == 3 or pug_size == 5:
-            pug = Pug(pug_size)
+
+        if data in (3, 5):
+
+            pug = Pug(int(data))
             pugs[guild_channel] = pug
 
             await ctx.send(f"{pug.pug_status('Pug has started.')}")
+        elif data in config.sections():
 
+            team = ScrimTeam()
+            team.name = data
+            for player in config[data]:
+                player_obj = discord.Guild.get_member_named(ctx.guild, player)
+                position = config[data][player]
+                team.add_player(position, player_obj)
+            pug = Scrim(team)
+            pugs[guild_channel] = pug
+
+            await ctx.send(f"{pug.pug_status('Scrim sign up has started.')}")
         else:
-            await ctx.send(f"Invalid Pug Size")
+
+            await ctx.send(f"<@{ctx.author.id}> Invalid argument.  Please input a valid pug size (3/5) or an existing"
+                           f"teamname.")
 
 
 @bot.command(
@@ -314,7 +345,6 @@ async def _stop(ctx):
 @bot.command(
     name="stop_team"
 )
-@commands.has_role(PugAdmin)
 async def _stop_team(ctx):
     global pugs, teams
     try:
@@ -425,7 +455,6 @@ async def _aadd(ctx, *args):
     name="tadd",
     usage="<@user> <position>",
 )
-@commands.has_role(PugAdmin)
 async def _tadd(ctx, *args):
 
     try:
@@ -511,7 +540,6 @@ async def _aremove(ctx, *args):
     name="tremove",
     usage="<@user>",
 )
-@commands.has_role(PugAdmin)
 async def _tremove(ctx, *args):
     try:
         team = get_team(ctx)
@@ -558,7 +586,6 @@ async def _remove(ctx):
 @bot.command(
     name="save",
 )
-@commands.has_role(PugAdmin)
 async def _save(ctx, *args):
     try:
         team = get_team(ctx)
@@ -763,9 +790,12 @@ async def _captains(ctx, captains: str):
 @_create_team.error
 @_stop_team.error
 @_save.error
+@_add.error
 async def role_error(ctx, error):
     if isinstance(error, commands.MissingRole):
         await ctx.send(f"<@{ctx.author.id}> You do not have permission to use this command. ")
+    if isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send(f"<@{ctx.author.id}> Please enter all required arguments. ")
 
 
 bot.run(TOKEN)
