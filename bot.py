@@ -3,6 +3,8 @@ import discord
 from discord.ext import commands
 from pug import Pug, PugTeam, ScrimTeamReg, ScrimTeam, Scrim
 import configparser
+import traceback
+import sys
 
 config = configparser.ConfigParser()
 config.optionxform = str
@@ -226,6 +228,608 @@ def destroy_team_create(ctx):
     del team_create[guild_channel]
 
 
+class ScrimTeamCommands(commands.Cog):
+    def __init__(self):
+        self.bot = bot
+        self._last_member = None
+
+    @commands.command(
+        name="create_team",
+        brief="Starts scrim team creation",
+        help="Starts a scrim team creation (one per server at a time)",
+        usage="No arguments required"
+    )
+    async def _create_team(self, ctx):
+        global team_create
+        guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
+        # TODO Should make it check ONLY guild.id so that only one team can be in creation per server at any given time so as not to have race condition both teams saving at same time
+
+        if guild_channel in team_create.keys():
+            await ctx.send(f"<@{ctx.author.id}> There is already a team being created in this channel.")
+        else:
+            pug = ScrimTeamReg()
+            team_create[guild_channel] = pug
+
+            await ctx.send(f"{pug.pug_status('Scrim team creation has started.')}")
+
+    @commands.command(
+        name="team",
+        brief="Displays the team status",
+        help="Has 2 uses - If used without arguments, will return the status of current team creation.  If used with"
+             " teamname as an argument, will list the players on the specified team (if it exists)",
+        aliases=["team_status"],
+        usage="<No arguments required|[teamname]>"
+
+    )
+    async def _team_status(self, ctx, *args):
+        config.read("config.ini")
+        if args:
+            team_name = " ".join(args)
+            if team_name in config:
+                team = ScrimTeam()
+                for player in config[team_name]:
+                    player_obj = discord.Guild.get_member_named(ctx.guild, player)
+                    position = config[team_name][player]
+                    team.add_player(position, player_obj)
+                await ctx.send(f"{team_name}: \n {team.team_string()}")
+
+
+            else:
+                await ctx.send(f"<@{ctx.author.id}> Team does not exist.")
+
+        else:
+            try:
+                team = get_team(ctx)
+                await ctx.send(team.pug_status(""))
+            except KeyError:
+                await ctx.send(f"<@{ctx.author.id}> No team creation in progress, use !create_team. ")
+
+    @commands.command(
+        name="stop_team",
+        help="Used to stop team creation",
+        usage="No arguments required"
+    )
+    async def _stop_team(self, ctx):
+        global pugs, teams
+        try:
+            destroy_team_create(ctx)
+            await ctx.send(f"<@{ctx.author.id}> Team creation has been ended. ")
+        except KeyError:
+            await ctx.send(f"<@{ctx.author.id}> No team creation in progress. ")
+            return
+
+    @commands.command(
+        name="teamlist",
+        brief="Displays the list of team names",
+        help="Fetches the list of team names from config file",
+        aliases=["team_list"],
+        usage="No arguments required",
+    )
+    async def _team_list(self, ctx):
+        config.read("config.ini")
+        teamlist = '\n- '.join(config.sections()[1:])
+        await ctx.send(f"   **Team List:** \n- {teamlist}")
+
+    @commands.command(
+        name="tadd",
+        usage="<@user> <position>",
+        brief="Adds a user to a team creation position",
+
+    )
+    async def _tadd(self, ctx, *args):
+
+        try:
+            team = get_team(ctx)
+            position = args[-1]
+            user = " ".join(args[:-1])
+            user_id = "".join(x for x in user if x.isdigit())  # filters out non-digits
+            disc_user = ctx.guild.get_member(int(user_id))
+        except KeyError:
+            await ctx.send(f"<@{ctx.author.id}> No team in creation ")
+            return
+        except ValueError:
+            try:
+                disc_user = ctx.guild.get_member_named(user)
+                if disc_user is None:
+                    raise KeyError("Could not find user")
+            except KeyError:
+                await ctx.send(
+                    f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
+                    "the name out exactly as it appears in their username."
+                )
+                return
+        await attempt_add(ctx, team, disc_user, position)
+
+    @commands.command(
+        name="tremove",
+        usage="<@user>",
+        brief="Removes user from team creation position"
+    )
+    async def _tremove(self, ctx, *args):
+        try:
+            team = get_team(ctx)
+            user = " ".join(args)
+            user_id = "".join(x for x in user if x.isdigit())  # filters out non-digits
+            disc_user = ctx.guild.get_member(int(user_id))
+        except KeyError:
+            await ctx.send(f"<@{ctx.author.id}> No team in creation. ")
+            return
+        except ValueError:
+            try:
+                disc_user = ctx.guild.get_member_named(user)
+                if disc_user is None:
+                    raise KeyError("Could not find user")
+            except KeyError:
+                await ctx.send(
+                    f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
+                    "the name out exactly as it appears in their username."
+                )
+                return
+        await attempt_remove(ctx, team, disc_user)
+
+    @commands.command(
+        name="save",
+        brief="Saves the team configuration as 'teammname'",
+        usage="<teamname>",
+        help="Creates a section (teamname) in the config file with users as the key and position as the value"
+    )
+    async def _save(self, ctx, *args):
+        try:
+            team = get_team(ctx)
+            teamname = " ".join(args)
+        except KeyError:
+            await ctx.send(f"<@{ctx.author.id}> No team in creation. ")
+            return
+        if team.state == 1:
+            passfail = team.save(teamname)
+
+            if passfail == 0:
+                await ctx.send(
+                    f"<@{ctx.author.id}> Team failed to save. Idk why it would fail so tell turtle to figure it out."
+                )
+            elif passfail == 1:
+                await ctx.send(
+                    f"<@{ctx.author.id}> Team {teamname} successfully saved!"
+                )
+                config.read("config.ini")
+                destroy_team_create(ctx)
+            elif passfail == 2:
+                await ctx.send(
+                    f"<@{ctx.author.id}> A team with the name {teamname} already exists, please try again with a different team name!"
+                )
+
+        else:
+            await ctx.send(
+                f"<@{ctx.author.id}> Team is not full yet!"
+            )
+
+
+class PugCommands(commands.Cog):
+    def __init__(self):
+        self.bot = bot
+        self._last_member = None
+
+    @commands.command(
+        name="start",
+        brief="Starts a channel specific pug queue",
+        help=(
+                "This command starts a channel specific pug which users can queue for. Users will be notified once the pug has "
+                "reached the required amount of players. This works with both 3v3 and 5v5 pugs."
+        ),
+        usage="<3|5|teamname>",
+        description=(
+                "Instantiates the pug class specific to server-channel, allows users to add to queue. "
+                "Once queue has reached capacity, pug changes to picking state, instantiate two teams (blue and red). "
+                "Shuts itself down once teams are picked."
+        ),
+        aliases=["START"],
+    )
+    async def _start(self, ctx, arg, *args):
+        global pugs, config
+        config.read("config.ini")
+        guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
+        try:
+            if len(args) > 0:
+                data = arg
+                data += " ".join(args)
+
+            else:
+                data = arg
+        except:
+            pass
+
+        if guild_channel in pugs.keys():
+            await ctx.send(f"<@{ctx.author.id}> There is already an ongoing game in this channel.")
+        else:
+
+            if data in ["3", "5"]:
+
+                pug = Pug(int(data))
+                pugs[guild_channel] = pug
+
+                await ctx.send(f"{pug.pug_status('Pug has started.')}")
+            elif data in config.sections():
+
+                team = ScrimTeam()
+                team.name = data
+                for player in config[data]:
+                    player_obj = discord.Guild.get_member_named(ctx.guild, player)
+                    position = config[data][player]
+                    team.add_player(position, player_obj)
+                pug = Scrim(team)
+                pugs[guild_channel] = pug
+
+                await ctx.send(f"{pug.pug_status('Scrim sign up has started.')}")
+            else:
+
+                await ctx.send(
+                    f"<@{ctx.author.id}> Invalid argument.  Please input a valid pug size (3/5) or an existing"
+                    f" teamname.")
+
+    @commands.command(
+        name="stop",
+        aliases=["Stop", "STOP"],
+        help="Used to stop a pug match",
+        description=(
+                "Unregisters the current pug from the list of running pug matches (stored in a dictionary where "
+                "the key is 'server-channel', attempts to unregister the teams as well if pug was in picking phase."
+        ),
+        pass_context=True,
+    )
+    @commands.has_role(PugAdmin)
+    async def _stop(self, ctx):
+        global pugs, teams
+        try:
+            destroy_pug(ctx)
+            try:
+                destroy_teams(ctx)
+            except KeyError:
+                pass
+
+            await ctx.send(f"<@{ctx.author.id}> Pug has been stopped. ")
+        except KeyError:
+            await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
+            return
+
+    @commands.command(
+        aliases=["list", "players", "teams"],
+        help=(
+                "Shows the current status of the pug; users added to the queue, and during pick phase shows teams, "
+                "who is picking, and which players are available."
+        ),
+        name="status",
+        brief="Shows the current status of the pug",
+    )
+    async def _status(self, ctx):
+        try:
+            pug = get_pug(ctx)
+            if pug.state == 1:
+
+                blue_team, red_team, = [x for x in get_teams(ctx)]
+
+                await ctx.send(pug.pug_status("", blue_team, red_team))
+            else:
+                await ctx.send(pug.pug_status(""))
+        except KeyError:
+            await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
+
+    @commands.command(
+        name="aadd",
+        aliases=["AADD", "aADD", "Aadd"],
+        help="ADMIN ONLY - Force add a user to the pug queue.",
+        usage="<@user> <position>",
+    )
+    @commands.has_role(PugAdmin)
+    async def _aadd(self, ctx, *args):
+
+        try:
+            pug = get_pug(ctx)
+            position = args[-1]
+            user = " ".join(args[:-1])
+            user_id = "".join(x for x in user if x.isdigit())  # filters out non-digits
+            disc_user = ctx.guild.get_member(int(user_id))
+        except KeyError:
+            await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
+            return
+        except ValueError:
+            try:
+                disc_user = ctx.guild.get_member_named(user)
+                if disc_user is None:
+                    raise KeyError("Could not find user")
+            except KeyError:
+                await ctx.send(
+                    f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
+                    "the name out exactly as it appears in their username."
+                )
+                return
+
+        if pug.state == 1:
+            await ctx.send(f"<@{ctx.author.id}> Cannot add or remove during pick phase!")
+            return
+        await attempt_add(ctx, pug, disc_user, position)
+
+    @commands.command(
+        name="add",
+        aliases=["a", "ADD", "A"],
+        brief="Used to register oneself for a pug match",
+        usage="<m|k|d>",
+        help="Used to register oneself for a pug match",
+    )
+    async def _add(self, ctx, position: str):
+        try:
+
+            pug = get_pug(ctx)
+        except KeyError:
+            await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
+            return
+        if pug.state == 1:
+            await ctx.send(f"<@{ctx.author.id}> Cannot add or remove during pick phase!")
+            return
+        disc_user = ctx.author
+
+        await attempt_add(ctx, pug, disc_user, position)
+
+    @commands.command(
+        name="aremove",
+        aliases=["AREMOVE", "Aremove"],
+        brief="ADMIN ONLY - Force remove a user from the pug",
+        help="ADMIN ONLY - Force remove a user from the pug",
+        usage="<@user>",
+    )
+    @commands.has_role(PugAdmin)
+    async def _aremove(self, ctx, *args):
+        try:
+            pug = get_pug(ctx)
+            user = " ".join(args)
+            user_id = "".join(x for x in user if x.isdigit())  # filters out non-digits
+            disc_user = ctx.guild.get_member(int(user_id))
+        except KeyError:
+            await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
+            return
+        except ValueError:
+            try:
+                disc_user = ctx.guild.get_member_named(user)
+                if disc_user is None:
+                    raise KeyError("Could not find user")
+            except KeyError:
+                await ctx.send(
+                    f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
+                    "the name out exactly as it appears in their username."
+                )
+                return
+        if pug.state == 1:
+            await ctx.send(f"<@{ctx.author.id}> Cannot add or remove during pick phase!")
+            return
+
+        await attempt_remove(ctx, pug, disc_user)
+
+    @commands.command(
+        name="remove",
+        aliases=["r", "R", "Remove", "REMOVE"],
+        brief="Used to remove oneself from a pug match",
+        help="Used to remove oneself from a pug match",
+    )
+    async def _remove(self, ctx):
+        try:
+            pug = get_pug(ctx)
+        except KeyError:
+            await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
+            return
+        if pug.state == 1:
+            await ctx.send(f"<@{ctx.author.id}> Cannot add or remove during pick phase!")
+            return
+        disc_user = ctx.author
+
+        await attempt_remove(ctx, pug, disc_user)
+
+    @commands.command(
+        name="apick",
+        aliases=["APICK", "Apick"],
+        brief="ADMIN ONLY - Force pick a player for the choosing team",
+        help="ADMIN ONLY - Force pick a player to join whichever team is currently picking",
+        usage="<@user>",
+    )
+    @commands.has_role(PugAdmin)
+    async def _apick(self, ctx, *args):
+        global pugs, teams
+        try:
+            pug = get_pug(ctx)
+            blue_team, red_team, = [x for x in get_teams(ctx)]
+            user = " ".join(args)
+            user_id = "".join(filter(lambda x: x.isdigit(), user))  # filters out non-digits
+            disc_user = ctx.guild.get_member(int(user_id))
+
+        except KeyError:
+            await ctx.send(f"<@{ctx.author.id}> No picking in progress.")
+            return
+        except ValueError:
+            try:
+                disc_user = ctx.guild.get_member_named(user)
+                if disc_user is None:
+                    raise KeyError("Could not find user")
+            except KeyError:
+                await ctx.send(
+                    f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
+                    "the name out exactly as it appears in their username."
+                )
+                return
+        await attempt_pick(ctx, pug, disc_user)
+
+    @commands.command(
+        name="pick",
+        aliases=["PICK", "p", "P", "Pick"],
+        brief="Picks a player during pick turn",
+        help="Adds specified player to your team.  Only usable by the team captain on their team's pick turn",
+        usage="<@user>",
+    )
+    async def _pick(self, ctx, *args):
+        global pugs, teams
+        try:
+            pug = get_pug(ctx)
+            blue_team, red_team, = [x for x in get_teams(ctx)]
+            user = " ".join(args)
+            user_id = "".join(filter(lambda x: x.isdigit(), user))  # filters out non-digits
+            disc_user = ctx.guild.get_member(int(user_id))
+
+        except KeyError:
+            await ctx.send(f"<@{ctx.author.id}> No picking in progress.")
+            return
+        except ValueError:
+            try:
+                disc_user = ctx.guild.get_member_named(user)
+                if disc_user is None:
+                    raise KeyError("Could not find user")
+            except KeyError:
+                await ctx.send(
+                    f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
+                    "the name out exactly as it appears in their username."
+                )
+                return
+
+        if pug.state == 0:
+            await ctx.send(f"<@{ctx.author.id}> Pug not in pick phase.")
+            return
+        if (pug.pick_order[pug.next_pick] == 1) and not (ctx.author == blue_team.captain):
+            await ctx.send(f"<@{ctx.author.id}> Look at me! {blue_team.captain.name} is the captain now!")
+            return
+        elif pug.pick_order[pug.next_pick] == 2 and not (ctx.author == red_team.captain):
+            await ctx.send(f"<@{ctx.author.id}> Look at me! {red_team.captain.name} is the captain now!")
+            return
+        await attempt_pick(ctx, pug, disc_user)
+
+    @commands.command(
+        name="spo",
+        aliases=["SPO", "Spo"],
+        brief="ADMIN ONLY - Change the pug team pick order",
+        help=(
+                "ADMIN ONLY - "
+                "Changes the pick order to specified setting.  Not available for 3v3 pugs. "
+                "Supports NA Normal: [B, R, R, B, R, B, R], Blitz: [B, R, R, B, B, R, B], and Linear: [B, R, B, R, B, R, B]"
+        ),
+        usage="<Blitz|Linear|Normal>",
+    )
+    @commands.has_role(PugAdmin)
+    async def _spo(self, ctx, pickorder: str):
+
+        try:
+            guild = ctx.guild.id
+            channel = ctx.channel.name
+            guild_channel = str(guild) + "-" + str(channel)
+            pug = pugs[guild_channel]
+        except KeyError:
+            await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
+            return
+
+        if pug.pug_size != 5:
+            await ctx.send(f"<@{ctx.author.id}> Cannot change pick order on 3v3 matches.")
+            return
+
+        if f"{guild_channel}-blue" in teams or f"{guild_channel}-red" in teams:
+            await ctx.send(f"<@{ctx.author.id}> Cannot change pick order once picking is in progress")
+            return
+
+        if pickorder.lower() == "blitz":
+            pug.spo(pickorder)
+        elif pickorder.lower() == "normal":
+            pug.spo(pickorder)
+        elif pickorder.lower() == "linear":
+            pug.spo(pickorder)
+        else:
+            await ctx.send(pug.pug_status("Invalid pick order. Valid options are 'normal', 'blitz', or 'linear'."))
+        await ctx.send(pug.pug_status("Pick Order Changed"))
+
+    @commands.command(
+        name="captains",
+        aliases=["Captains", "CAPTAINS", "c", "C", "captain"],
+        brief="ADMIN ONLY - Selects which position will be captains.",
+        help="ADMIN ONLY - Selects which position will be used for captains.  Not usable in 3v3",
+        usage="<k|d|random>",
+    )
+    @commands.has_role(PugAdmin)
+    async def _captains(self, ctx, captains: str):
+
+        try:
+            guild = ctx.guild.id
+            channel = ctx.channel.name
+            guild_channel_string = str(guild) + "-" + str(channel)
+            pug = pugs[guild_channel_string]
+
+        except KeyError:
+            await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
+            return
+        if pug.pug_size != 5:
+            await ctx.send(f"<@{ctx.author.id}> Cannot set captains on 3v3 matches.")
+            return
+        try:
+            # TODO: just use an if statement here (see changes to _spo above)
+            blue_team = teams[guild_channel_string + "-blue"]
+            red_team = teams[guild_channel_string + "-red"]
+            await ctx.send(f"<@{ctx.author.id}> Cannot change captains once picking is in progress.")
+            return
+        except KeyError:
+            pass
+
+        if captains.lower() == "d":
+            pug.set_captains(captains.lower())
+            await ctx.send(pug.pug_status("Defenders will be captains."))
+        elif captains.lower() == "k":
+            pug.set_captains(captains.lower())
+            await ctx.send(pug.pug_status("Keepers will be captains."))
+        elif captains.lower() == "random":
+            pug.set_captains(None)
+            await ctx.send(pug.pug_status("Captains will be random."))
+        else:
+            await ctx.send(f"<@{ctx.author.id}> Invalid captain selection. Valid options are 'd', 'k', or 'random'.")
+
+
+class CommandErrorHandler(commands.Cog):
+    def __init__(self):
+        self.bot = bot
+
+    @commands.Cog.listener()
+    async def on_command_error(self, ctx, error):
+        """The event triggered when an error is raised while invoking a command.
+        ctx   : Context
+        error : Exception"""
+
+        # This prevents any commands with local handlers being handled here in on_command_error.
+        if hasattr(ctx.command, 'on_error'):
+            return
+
+        ignored = (commands.CommandNotFound)
+
+        # Allows us to check for original exceptions raised and sent to CommandInvokeError.
+        # If nothing is found. We keep the exception passed to on_command_error.
+        error = getattr(error, 'original', error)
+
+        # Anything in ignored will return and prevent anything happening.
+        if isinstance(error, ignored):
+            return
+
+        elif isinstance(error, commands.DisabledCommand):
+            return await ctx.send(f'{ctx.command} has been disabled.')
+
+        elif isinstance(error, commands.NoPrivateMessage):
+            try:
+                return await ctx.author.send(f'{ctx.command} can not be used in Private Messages.')
+            except:
+                pass
+
+        elif isinstance(error, commands.MissingRole):
+            return await ctx.send(f"<@{ctx.author.id}> You do not have permission to use this command. ")
+
+        elif isinstance(error, commands.MissingRequiredArgument):
+            return await ctx.send(f"<@{ctx.author.id}> Please enter all required arguments. ")
+
+
+        # All other Errors not returned come here... And we can just print the default TraceBack.
+        print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
+        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+
+
+bot.add_cog(ScrimTeamCommands())
+bot.add_cog(PugCommands())
+bot.add_cog(CommandErrorHandler())
 @bot.event
 async def on_ready():
     print("Logged in as")
@@ -247,576 +851,6 @@ async def _prefix(ctx, new_prefix: str):
     await ctx.send(f"Command Prefix changed to: {bot.command_prefix}")
 
 
-@bot.command(
-    name="start",
-    brief="Starts a channel specific pug queue",
-    help=(
-        "This command starts a channel specific pug which users can queue for. Users will be notified once the pug has "
-        "reached the required amount of players. This works with both 3v3 and 5v5 pugs."
-    ),
-    usage="<3|5|[teamname]>",
-    description=(
-        "Instantiates the pug class specific to server-channel, allows users to add to queue. "
-        "Once queue has reached capacity, pug changes to picking state, instantiate two teams (blue and red). "
-        "Shuts itself down once teams are picked."
-    ),
-    aliases=["START"],
-)
-async def _start(ctx, *args):
-    global pugs, config
-    config.read("config.ini")
-    guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
-    try:
-        data = " ".join(args)
-    except:
-        pass
-
-    if guild_channel in pugs.keys():
-        await ctx.send(f"<@{ctx.author.id}> There is already an ongoing game in this channel.")
-    else:
-
-        if data in (3, 5):
-
-            pug = Pug(int(data))
-            pugs[guild_channel] = pug
-
-            await ctx.send(f"{pug.pug_status('Pug has started.')}")
-        elif data in config.sections():
-
-            team = ScrimTeam()
-            team.name = data
-            for player in config[data]:
-                player_obj = discord.Guild.get_member_named(ctx.guild, player)
-                position = config[data][player]
-                team.add_player(position, player_obj)
-            pug = Scrim(team)
-            pugs[guild_channel] = pug
-
-            await ctx.send(f"{pug.pug_status('Scrim sign up has started.')}")
-        else:
-
-            await ctx.send(f"<@{ctx.author.id}> Invalid argument.  Please input a valid pug size (3/5) or an existing"
-                           f"teamname.")
-
-
-@bot.command(
-    name="create_team",
-    brief="Starts scrim team creation",
-    help="Starts a scrim team creation (one per server at a time)",
-    usage="No arguments required"
-)
-async def _create_team(ctx):
-    global team_create
-    guild_channel = f"{ctx.guild.id}-{ctx.channel.name}"
-    #TODO Should make it check ONLY guild.id so that only one team can be in creation per server at any given time so as not to have race condition both teams saving at same time
-
-    if guild_channel in team_create.keys():
-        await ctx.send(f"<@{ctx.author.id}> There is already a team being created in this channel.")
-    else:
-        pug = ScrimTeamReg()
-        team_create[guild_channel] = pug
-
-        await ctx.send(f"{pug.pug_status('Scrim team creation has started.')}")
-
-
-@bot.command(
-    name="stop",
-    aliases=["Stop", "STOP"],
-    help="Used to stop a pug match",
-    description=(
-        "Unregisters the current pug from the list of running pug matches (stored in a dictionary where "
-        "the key is 'server-channel', attempts to unregister the teams as well if pug was in picking phase."
-    ),
-    pass_context=True,
-)
-@commands.has_role(PugAdmin)
-async def _stop(ctx):
-    global pugs, teams
-    try:
-        destroy_pug(ctx)
-        try:
-            destroy_teams(ctx)
-        except KeyError:
-            pass
-
-        await ctx.send(f"<@{ctx.author.id}> Pug has been stopped. ")
-    except KeyError:
-        await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
-        return
-
-
-@bot.command(
-    name="stop_team",
-    help="Used to stop team creation",
-    usage="No arguments required"
-)
-async def _stop_team(ctx):
-    global pugs, teams
-    try:
-        destroy_team_create(ctx)
-        await ctx.send(f"<@{ctx.author.id}> Team creation has been ended. ")
-    except KeyError:
-        await ctx.send(f"<@{ctx.author.id}> No team creation in progress. ")
-        return
-
-@bot.command(
-    aliases=["list", "players", "teams"],
-    help=(
-        "Shows the current status of the pug; users added to the queue, and during pick phase shows teams, "
-        "who is picking, and which players are available."
-    ),
-    name="status",
-    brief="Shows the current status of the pug",
-)
-async def _status(ctx):
-    try:
-        pug = get_pug(ctx)
-        if pug.state == 1:
-
-            blue_team, red_team, = [x for x in get_teams(ctx)]
-
-            await ctx.send(pug.pug_status("", blue_team, red_team))
-        else:
-            await ctx.send(pug.pug_status(""))
-    except KeyError:
-        await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
-
-
-@bot.command(
-    name="team",
-    brief="Displays the status of team creation",
-    help="Displays the status of team creation",
-    aliases=["team_status"],
-    usage="No arguments required"
-
-)
-async def _team_status(ctx, *args):
-    config.read("config.ini")
-    if args:
-        team_name = " ".join(args)
-        if team_name in config:
-            team = ScrimTeam()
-            for player in config[team_name]:
-                player_obj = discord.Guild.get_member_named(ctx.guild, player)
-                position = config[team_name][player]
-                team.add_player(position, player_obj)
-            await ctx.send(f"{team_name}: \n {team.team_string()}")
-
-
-        else:
-            await ctx.send(f"<@{ctx.author.id}> Team does not exist.")
-
-    else:
-        try:
-            team = get_team(ctx)
-            await ctx.send(team.pug_status(""))
-        except KeyError:
-            await ctx.send(f"<@{ctx.author.id}> No team creation in progress, use !create_team. ")
-
-
-
-
-@bot.command(
-    name="teamlist",
-    brief="Displays the list of team names",
-    help="Fetches the list of team names from config file",
-    aliases=["team_list"],
-    usage="No arguments required",
-)
-async def _team_list(ctx):
-    config.read("config.ini")
-    teamlist = '\n- '.join(config.sections()[1:])
-    await ctx.send(f"   **Team List:** \n- {teamlist}")
-
-
-@bot.command(
-    name="aadd",
-    aliases=["AADD", "aADD", "Aadd"],
-    help="ADMIN ONLY - Force add a user to the pug queue.",
-    usage="<@user> <position>",
-)
-@commands.has_role(PugAdmin)
-async def _aadd(ctx, *args):
-
-    try:
-        pug = get_pug(ctx)
-        position = args[-1]
-        user = " ".join(args[:-1])
-        user_id = "".join(x for x in user if x.isdigit())  # filters out non-digits
-        disc_user = ctx.guild.get_member(int(user_id))
-    except KeyError:
-        await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
-        return
-    except ValueError:
-        try:
-            disc_user = ctx.guild.get_member_named(user)
-            if disc_user is None:
-                raise KeyError("Could not find user")
-        except KeyError:
-            await ctx.send(
-                f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
-                "the name out exactly as it appears in their username."
-            )
-            return
-
-    if pug.state == 1:
-        await ctx.send(f"<@{ctx.author.id}> Cannot add or remove during pick phase!")
-        return
-    await attempt_add(ctx, pug, disc_user, position)
-
-
-@bot.command(
-    name="tadd",
-    usage="<@user> <position>",
-    brief="Adds a user to a team creation position",
-
-)
-async def _tadd(ctx, *args):
-
-    try:
-        team = get_team(ctx)
-        position = args[-1]
-        user = " ".join(args[:-1])
-        user_id = "".join(x for x in user if x.isdigit())  # filters out non-digits
-        disc_user = ctx.guild.get_member(int(user_id))
-    except KeyError:
-        await ctx.send(f"<@{ctx.author.id}> No team in creation ")
-        return
-    except ValueError:
-        try:
-            disc_user = ctx.guild.get_member_named(user)
-            if disc_user is None:
-                raise KeyError("Could not find user")
-        except KeyError:
-            await ctx.send(
-                f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
-                "the name out exactly as it appears in their username."
-            )
-            return
-    await attempt_add(ctx, team, disc_user, position)
-
-@bot.command(
-    name="add",
-    aliases=["a", "ADD", "A"],
-    brief="Used to register oneself for a pug match",
-    usage="<m|k|d>",
-    help="Used to register oneself for a pug match",
-)
-async def _add(ctx, position: str):
-    try:
-
-        pug = get_pug(ctx)
-    except KeyError:
-        await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
-        return
-    if pug.state == 1:
-        await ctx.send(f"<@{ctx.author.id}> Cannot add or remove during pick phase!")
-        return
-    disc_user = ctx.author
-
-    await attempt_add(ctx, pug, disc_user, position)
-
-
-@bot.command(
-    name="aremove",
-    aliases=["AREMOVE", "Aremove"],
-    brief="ADMIN ONLY - Force remove a user from the pug",
-    help="ADMIN ONLY - Force remove a user from the pug",
-    usage="<@user>",
-)
-@commands.has_role(PugAdmin)
-async def _aremove(ctx, *args):
-    try:
-        pug = get_pug(ctx)
-        user = " ".join(args)
-        user_id = "".join(x for x in user if x.isdigit())  # filters out non-digits
-        disc_user = ctx.guild.get_member(int(user_id))
-    except KeyError:
-        await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
-        return
-    except ValueError:
-        try:
-            disc_user = ctx.guild.get_member_named(user)
-            if disc_user is None:
-                raise KeyError("Could not find user")
-        except KeyError:
-            await ctx.send(
-                f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
-                "the name out exactly as it appears in their username."
-            )
-            return
-    if pug.state == 1:
-        await ctx.send(f"<@{ctx.author.id}> Cannot add or remove during pick phase!")
-        return
-
-    await attempt_remove(ctx, pug, disc_user)
-
-
-@bot.command(
-    name="tremove",
-    usage="<@user>",
-    brief="Removes user from team creation position"
-)
-async def _tremove(ctx, *args):
-    try:
-        team = get_team(ctx)
-        user = " ".join(args)
-        user_id = "".join(x for x in user if x.isdigit())  # filters out non-digits
-        disc_user = ctx.guild.get_member(int(user_id))
-    except KeyError:
-        await ctx.send(f"<@{ctx.author.id}> No team in creation. ")
-        return
-    except ValueError:
-        try:
-            disc_user = ctx.guild.get_member_named(user)
-            if disc_user is None:
-                raise KeyError("Could not find user")
-        except KeyError:
-            await ctx.send(
-                f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
-                "the name out exactly as it appears in their username."
-            )
-            return
-    await attempt_remove(ctx, team, disc_user)
-
-
-@bot.command(
-    name="remove",
-    aliases=["r", "R", "Remove", "REMOVE"],
-    brief="Used to remove oneself from a pug match",
-    help="Used to remove oneself from a pug match",
-)
-async def _remove(ctx):
-    try:
-        pug = get_pug(ctx)
-    except KeyError:
-        await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
-        return
-    if pug.state == 1:
-        await ctx.send(f"<@{ctx.author.id}> Cannot add or remove during pick phase!")
-        return
-    disc_user = ctx.author
-
-    await attempt_remove(ctx, pug, disc_user)
-
-
-@bot.command(
-    name="save",
-    brief="Saves the team configuration as 'teammname'",
-    usage="<teamname>",
-    help="Creates a section (teamname) in the config file with users as the key and position as the value"
-)
-async def _save(ctx, *args):
-    try:
-        team = get_team(ctx)
-        teamname = " ".join(args)
-    except KeyError:
-        await ctx.send(f"<@{ctx.author.id}> No team in creation. ")
-        return
-    if team.state == 1:
-        passfail = team.save(teamname)
-
-        if passfail == 0:
-            await ctx.send(
-                f"<@{ctx.author.id}> Team failed to save. Idk why it would fail so tell turtle to figure it out."
-            )
-        elif passfail == 1:
-            await ctx.send(
-                f"<@{ctx.author.id}> Team {teamname} successfully saved!"
-            )
-            config.read("config.ini")
-            destroy_team_create(ctx)
-        elif passfail == 2:
-            await ctx.send(
-                f"<@{ctx.author.id}> A team with the name {teamname} already exists, please try again with a different team name!"
-            )
-
-    else:
-        await ctx.send(
-            f"<@{ctx.author.id}> Team is not full yet!"
-        )
-
-
-
-@bot.command(
-    name="apick",
-    aliases=["APICK", "Apick"],
-    brief="ADMIN ONLY - Force pick a player for the choosing team",
-    help="ADMIN ONLY - Force pick a player to join whichever team is currently picking",
-    usage="<@user>",
-)
-@commands.has_role(PugAdmin)
-async def _apick(ctx, *args):
-    global pugs, teams
-    try:
-        pug = get_pug(ctx)
-        blue_team, red_team, = [x for x in get_teams(ctx)]
-        user = " ".join(args)
-        user_id = "".join(filter(lambda x: x.isdigit(), user))  # filters out non-digits
-        disc_user = ctx.guild.get_member(int(user_id))
-
-    except KeyError:
-        await ctx.send(f"<@{ctx.author.id}> No picking in progress.")
-        return
-    except ValueError:
-        try:
-            disc_user = ctx.guild.get_member_named(user)
-            if disc_user is None:
-                raise KeyError("Could not find user")
-        except KeyError:
-            await ctx.send(
-                f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
-                "the name out exactly as it appears in their username."
-            )
-            return
-    await attempt_pick(ctx, pug, disc_user)
-
-
-@bot.command(
-    name="pick",
-    aliases=["PICK", "p", "P", "Pick"],
-    brief="Picks a player during pick turn",
-    help="Adds specified player to your team.  Only usable by the team captain on their team's pick turn",
-    usage="<@user>",
-)
-async def _pick(ctx, *args):
-    global pugs, teams
-    try:
-        pug = get_pug(ctx)
-        blue_team, red_team, = [x for x in get_teams(ctx)]
-        user = " ".join(args)
-        user_id = "".join(filter(lambda x: x.isdigit(), user))  # filters out non-digits
-        disc_user = ctx.guild.get_member(int(user_id))
-
-    except KeyError:
-        await ctx.send(f"<@{ctx.author.id}> No picking in progress.")
-        return
-    except ValueError:
-        try:
-            disc_user = ctx.guild.get_member_named(user)
-            if disc_user is None:
-                raise KeyError("Could not find user")
-        except KeyError:
-            await ctx.send(
-                f"<@{ctx.author.id}> Could not find user.  Please use the @ to mention the user, or be sure to type "
-                "the name out exactly as it appears in their username."
-            )
-            return
-
-    if pug.state == 0:
-        await ctx.send(f"<@{ctx.author.id}> Pug not in pick phase.")
-        return
-    if (pug.pick_order[pug.next_pick] == 1) and not (ctx.author == blue_team.captain):
-        await ctx.send(f"<@{ctx.author.id}> Look at me! {blue_team.captain.name} is the captain now!")
-        return
-    elif pug.pick_order[pug.next_pick] == 2 and not (ctx.author == red_team.captain):
-        await ctx.send(f"<@{ctx.author.id}> Look at me! {red_team.captain.name} is the captain now!")
-        return
-    await attempt_pick(ctx, pug, disc_user)
-
-@bot.command(
-    name="spo",
-    aliases=["SPO", "Spo"],
-    brief="ADMIN ONLY - Change the pug team pick order",
-    help=(
-        "ADMIN ONLY - "
-        "Changes the pick order to specified setting.  Not available for 3v3 pugs. "
-        "Supports NA Normal: [B, R, R, B, R, B, R], Blitz: [B, R, R, B, B, R, B], and Linear: [B, R, B, R, B, R, B]"
-    ),
-    usage="<Blitz|Linear|Normal>",
-)
-@commands.has_role(PugAdmin)
-async def _spo(ctx, pickorder: str):
-
-    try:
-        guild = ctx.guild.id
-        channel = ctx.channel.name
-        guild_channel = str(guild) + "-" + str(channel)
-        pug = pugs[guild_channel]
-    except KeyError:
-        await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
-        return
-
-    if pug.pug_size != 5:
-        await ctx.send(f"<@{ctx.author.id}> Cannot change pick order on 3v3 matches.")
-        return
-
-    if f"{guild_channel}-blue" in teams or f"{guild_channel}-red" in teams:
-        await ctx.send(f"<@{ctx.author.id}> Cannot change pick order once picking is in progress")
-        return
-
-    if pickorder.lower() == "blitz":
-        pug.spo(pickorder)
-    elif pickorder.lower() == "normal":
-        pug.spo(pickorder)
-    elif pickorder.lower() == "linear":
-        pug.spo(pickorder)
-    else:
-        await ctx.send(pug.pug_status("Invalid pick order. Valid options are 'normal', 'blitz', or 'linear'."))
-    await ctx.send(pug.pug_status("Pick Order Changed"))
-
-
-@bot.command(
-    name="captains",
-    aliases=["Captains", "CAPTAINS", "c", "C", "captain"],
-    brief="ADMIN ONLY - Selects which position will be captains.",
-    help="ADMIN ONLY - Selects which position will be used for captains.  Not usable in 3v3",
-    usage="<k|d|random>",
-)
-@commands.has_role(PugAdmin)
-async def _captains(ctx, captains: str):
-
-    try:
-        guild = ctx.guild.id
-        channel = ctx.channel.name
-        guild_channel_string = str(guild) + "-" + str(channel)
-        pug = pugs[guild_channel_string]
-
-    except KeyError:
-        await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
-        return
-    if pug.pug_size != 5:
-        await ctx.send(f"<@{ctx.author.id}> Cannot set captains on 3v3 matches.")
-        return
-    try:
-        # TODO: just use an if statement here (see changes to _spo above)
-        blue_team = teams[guild_channel_string + "-blue"]
-        red_team = teams[guild_channel_string + "-red"]
-        await ctx.send(f"<@{ctx.author.id}> Cannot change captains once picking is in progress.")
-        return
-    except KeyError:
-        pass
-
-    if captains.lower() == "d":
-        pug.set_captains(captains.lower())
-        await ctx.send(pug.pug_status("Defenders will be captains."))
-    elif captains.lower() == "k":
-        pug.set_captains(captains.lower())
-        await ctx.send(pug.pug_status("Keepers will be captains."))
-    elif captains.lower() == "random":
-        pug.set_captains(None)
-        await ctx.send(pug.pug_status("Captains will be random."))
-    else:
-        await ctx.send(f"<@{ctx.author.id}> Invalid captain selection. Valid options are 'd', 'k', or 'random'.")
-
-
-@_captains.error
-@_spo.error
-@_aremove.error
-@_apick.error
-@_aadd.error
-@_stop.error
-@_tadd.error
-@_tremove.error
-@_create_team.error
-@_stop_team.error
-@_save.error
-@_add.error
-async def role_error(ctx, error):
-    if isinstance(error, commands.MissingRole):
-        await ctx.send(f"<@{ctx.author.id}> You do not have permission to use this command. ")
-    if isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(f"<@{ctx.author.id}> Please enter all required arguments. ")
 
 
 bot.run(TOKEN)
