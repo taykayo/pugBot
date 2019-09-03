@@ -236,9 +236,9 @@ async def on_ready():
 
 @bot.command(
     name="prefix",
-    help="Used to change the bot command prefix",
+    help="ADMIN ONLY - Used to change the bot command prefix",
     usage="<prefix>",
-    description="Used to change the bot command prefix",
+    description="ADMIN ONLY - Used to change the bot command prefix",
     aliases=["Prefix"],
 )
 @commands.has_role(PugAdmin)
@@ -300,7 +300,10 @@ async def _start(ctx, *args):
 
 
 @bot.command(
-    name="create_team"
+    name="create_team",
+    brief="Starts scrim team creation",
+    help="Starts a scrim team creation (one per server at a time)",
+    usage="No arguments required"
 )
 async def _create_team(ctx):
     global team_create
@@ -343,7 +346,9 @@ async def _stop(ctx):
 
 
 @bot.command(
-    name="stop_team"
+    name="stop_team",
+    help="Used to stop team creation",
+    usage="No arguments required"
 )
 async def _stop_team(ctx):
     global pugs, teams
@@ -379,6 +384,11 @@ async def _status(ctx):
 
 @bot.command(
     name="team",
+    brief="Displays the status of team creation",
+    help="Displays the status of team creation",
+    aliases=["team_status"],
+    usage="No arguments required"
+
 )
 async def _team_status(ctx, *args):
     config.read("config.ini")
@@ -408,6 +418,10 @@ async def _team_status(ctx, *args):
 
 @bot.command(
     name="teamlist",
+    brief="Displays the list of team names",
+    help="Fetches the list of team names from config file",
+    aliases=["team_list"],
+    usage="No arguments required",
 )
 async def _team_list(ctx):
     config.read("config.ini")
@@ -418,7 +432,7 @@ async def _team_list(ctx):
 @bot.command(
     name="aadd",
     aliases=["AADD", "aADD", "Aadd"],
-    help="Usable by admins to force add a user to the pug queue.",
+    help="ADMIN ONLY - Force add a user to the pug queue.",
     usage="<@user> <position>",
 )
 @commands.has_role(PugAdmin)
@@ -454,6 +468,8 @@ async def _aadd(ctx, *args):
 @bot.command(
     name="tadd",
     usage="<@user> <position>",
+    brief="Adds a user to a team creation position",
+
 )
 async def _tadd(ctx, *args):
 
@@ -504,8 +520,8 @@ async def _add(ctx, position: str):
 @bot.command(
     name="aremove",
     aliases=["AREMOVE", "Aremove"],
-    brief="Usable by admins to force remove a user from the pug",
-    help="Usable by admins to force remove a user from the pug",
+    brief="ADMIN ONLY - Force remove a user from the pug",
+    help="ADMIN ONLY - Force remove a user from the pug",
     usage="<@user>",
 )
 @commands.has_role(PugAdmin)
@@ -539,6 +555,7 @@ async def _aremove(ctx, *args):
 @bot.command(
     name="tremove",
     usage="<@user>",
+    brief="Removes user from team creation position"
 )
 async def _tremove(ctx, *args):
     try:
@@ -585,6 +602,9 @@ async def _remove(ctx):
 
 @bot.command(
     name="save",
+    brief="Saves the team configuration as 'teammname'",
+    usage="<teamname>",
+    help="Creates a section (teamname) in the config file with users as the key and position as the value"
 )
 async def _save(ctx, *args):
     try:
@@ -621,8 +641,8 @@ async def _save(ctx, *args):
 @bot.command(
     name="apick",
     aliases=["APICK", "Apick"],
-    brief="Usable by admins to force pick a player for the choosing team",
-    help="Usable by admins to force pick a player to join whichever team is currently picking",
+    brief="ADMIN ONLY - Force pick a player for the choosing team",
+    help="ADMIN ONLY - Force pick a player to join whichever team is currently picking",
     usage="<@user>",
 )
 @commands.has_role(PugAdmin)
@@ -655,8 +675,8 @@ async def _apick(ctx, *args):
 @bot.command(
     name="pick",
     aliases=["PICK", "p", "P", "Pick"],
-    brief="Used by captains to choose a player during their pick turn",
-    help="Adds specified player to your team.  Only useable by the team captain on their pick turn",
+    brief="Picks a player during pick turn",
+    help="Adds specified player to your team.  Only usable by the team captain on their team's pick turn",
     usage="<@user>",
 )
 async def _pick(ctx, *args):
@@ -697,8 +717,9 @@ async def _pick(ctx, *args):
 @bot.command(
     name="spo",
     aliases=["SPO", "Spo"],
-    brief="Usable by admins to change the pug team pick order",
+    brief="ADMIN ONLY - Change the pug team pick order",
     help=(
+        "ADMIN ONLY - "
         "Changes the pick order to specified setting.  Not available for 3v3 pugs. "
         "Supports NA Normal: [B, R, R, B, R, B, R], Blitz: [B, R, R, B, B, R, B], and Linear: [B, R, B, R, B, R, B]"
     ),
@@ -738,8 +759,8 @@ async def _spo(ctx, pickorder: str):
 @bot.command(
     name="captains",
     aliases=["Captains", "CAPTAINS", "c", "C", "captain"],
-    brief="Usable by admins to manually select which position will be captains.",
-    help="Selects which position will be used for captains.  Not usable in 3v3",
+    brief="ADMIN ONLY - Selects which position will be captains.",
+    help="ADMIN ONLY - Selects which position will be used for captains.  Not usable in 3v3",
     usage="<k|d|random>",
 )
 @commands.has_role(PugAdmin)
