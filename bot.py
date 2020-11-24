@@ -6,6 +6,9 @@ import configparser
 import traceback
 import sys
 
+intents = discord.Intents.default()
+intents.members = True
+intents.guilds = True
 config = configparser.ConfigParser()
 config.optionxform = str
 config.read("config.ini")
@@ -13,7 +16,7 @@ TOKEN = config["config"]["bot_token"]
 PugAdmin = config["config"]["PugbotAdmin"]
 description = "The NA Supraball PugBot, brought to you by Tiny Turtle"
 DEBUG = config["config"].getboolean("DEBUG")
-bot = commands.Bot(command_prefix="!", description=description)
+bot = commands.Bot(command_prefix="!", description=description, intents=intents)
 
 pugs = dict()
 teams = dict()
@@ -528,6 +531,7 @@ class PugCommands(commands.Cog):
             user = " ".join(args[:-1])
             user_id = "".join(x for x in user if x.isdigit())  # filters out non-digits
             disc_user = ctx.guild.get_member(int(user_id))
+
         except KeyError:
             await ctx.send(f"<@{ctx.author.id}> No pug in progress. Use the !start command to launch a pug. ")
             return
